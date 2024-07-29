@@ -1,0 +1,17 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Install common packages`"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Install missing packages"
+  apt:
+    name: "{{ missing_packages }}"
+    state: present
+  when: missing_packages is defined and missing_packages | length > 0
+
+# For when the `missing_packages` are installed
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Add new installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + missing_packages) | unique }}"
+  when: missing_packages is defined and missing_packages | length > 0

@@ -8,7 +8,8 @@
 #     03. Prerequisites (TASK_CONDITION only)
 #     04. Post install script
 #     05. Update and upgrade
-#     06. Post Completion Tasks and Cleanup (TASK only)
+#     06. Install common packages
+#     07. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -20,6 +21,7 @@
     pretask_taskandtaskcondition_message_sno: 1
     is_condition_post_install_script: false
     is_condition_update_and_upgrade: false
+    is_condition_install_common_packages: false
     is_condition_post_completion_tasks_and_cleanup: false
 
   vars_files:
@@ -71,6 +73,17 @@
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Update and upgrade`, Caller block"
       include_tasks: tasks/update_and_upgrade.yml
       when: is_condition_update_and_upgrade
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `Install common packages` (will run only once, until forced)
+    - name: ""
+      import_tasks: tasks_conditions/install_common_packages.yml
+
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Install common packages`, Caller block"
+      include_tasks: tasks/install_common_packages.yml
+      when: is_condition_install_common_packages
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

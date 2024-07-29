@@ -1,0 +1,20 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Update and upgrade`"
+    update_and_upgrade_result: null
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Update and upgrade the system"
+  apt:
+    update_cache: yes
+    upgrade: dist
+  register: update_and_upgrade_result
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Touching run file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_update_and_upgrade_* && sleep 2 && touch /root/proxmox_automation_install/task_update_and_upgrade_$(date +%Y%m%d-%H%M%S).run.tmp"
+  ignore_errors: true
+  changed_when: false
+  failed_when: false
+  when: not update_and_upgrade_result.failed

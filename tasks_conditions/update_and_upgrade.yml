@@ -1,0 +1,25 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Update and upgrade`"
+    ignore_if_last_run_within: "24 hours ago"
+    is_recent_update_and_upgrade_result: null
+    is_recent_update_and_upgrade: null
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Get the latest run file if exits and compare it with `ignore_if_last_run_within` value"
+  shell: ls -1r /root/proxmox_automation_install/task_update_and_upgrade_* 2> /dev/null | head -n 1 | grep -oP "[^_]_\K[0-9]{8}-[0-9]{6}" | xargs -I {} bash -c 'if [ $(date -d "$(echo {} | sed -E "s/([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})/\\1-\\2-\\3 \\4:\\5:\\6/")" +%s) -ge $(date -d "{{ ignore_if_last_run_within }}" +%s) ]; then echo true; else echo false; fi'
+  register: is_recent_update_and_upgrade_result
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Set the `is_recent_update_and_upgrade` from `is_recent_update_and_upgrade_result`"
+  set_fact:
+    is_recent_update_and_upgrade: "{{ is_recent_update_and_upgrade_result.stdout }}"
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Set `is_condition_update_and_upgrade` based on conditions"
+  set_fact:
+    is_condition_update_and_upgrade: true
+  when: is_recent_update_and_upgrade != true

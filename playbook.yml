@@ -7,7 +7,8 @@
 #     02. Virtualization and VT-d enabled (PRE_TASK)
 #     03. Prerequisites (TASK_CONDITION only)
 #     04. Post install script
-#     05. Post Completion Tasks and Cleanup (TASK only)
+#     05. Update and upgrade
+#     06. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -18,6 +19,7 @@
   vars:
     pretask_taskandtaskcondition_message_sno: 1
     is_condition_post_install_script: false
+    is_condition_update_and_upgrade: false
     is_condition_post_completion_tasks_and_cleanup: false
 
   vars_files:
@@ -58,6 +60,17 @@
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Post install script`, Caller block"
       include_tasks: tasks/post_install_script.yml
       when: is_condition_post_install_script
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `Update and upgrade` (will run only once, until 24 hours are passed or until forced)
+    - name: ""
+      import_tasks: tasks_conditions/update_and_upgrade.yml
+
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Update and upgrade`, Caller block"
+      include_tasks: tasks/update_and_upgrade.yml
+      when: is_condition_update_and_upgrade
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

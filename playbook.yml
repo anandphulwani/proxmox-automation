@@ -1,6 +1,9 @@
 ---
 - name: Proxmox initial setup
   hosts: all
+  gather_facts: no
   vars:
 
   tasks:
+    - name: Gather facts manually
+      setup:

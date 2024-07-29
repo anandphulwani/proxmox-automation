@@ -1,0 +1,39 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`SSH Port`"
+    etc_ssh_sshd_config_file_exists: null
+    is_ssh_port_set: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `ssh_port_new` is defined and not empty"
+  fail:
+    msg: "The variable 'ssh_port_new' is not defined or is empty."
+  when: ssh_port_new is not defined or ssh_port_new == '' or ssh_port_new is none
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `ssh_port_new` matches the regex pattern"
+  fail:
+    msg: "The variable 'ssh_port_new' value: '{{ ssh_port_new }}' is not a valid value."
+  when: not ssh_port_new | regex_search("^\d{2,5}$")
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if `/etc/ssh/sshd_config` file exists"
+  stat:
+    path: /etc/ssh/sshd_config
+  register: etc_ssh_sshd_config_file_exists
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Fail if `/etc/ssh/sshd_config` file does not exists"
+  fail:
+    msg: "File `/etc/ssh/sshd_config` does not exists"
+  when: not etc_ssh_sshd_config_file_exists.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if SSH port set in `/etc/ssh/sshd_config` file"
+  command: "grep -q '^Port {{ ssh_port_new }}$' /etc/ssh/sshd_config"
+  register: is_ssh_port_set
+  changed_when: false
+  failed_when: false
+  ignore_errors: yes
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Set `is_condition_ssh_port` based on conditions"
+  set_fact:
+    is_condition_ssh_port: true
+  when: is_ssh_port_set.rc != 0

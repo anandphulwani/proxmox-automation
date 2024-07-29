@@ -1,0 +1,103 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`SSH Port`"
+    message_output: null
+    remote_server_ips_result: null
+    remote_server_ips: null
+    is_proxmox_accessed_directly: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current SSH config"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/ssh/ && cp /etc/ssh/sshd_config /root/proxmox_automation_install/backups/etc/ssh/sshd_config_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Change SSH daemon port configuration"
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    validate: /usr/sbin/sshd -t -f %s
+  with_items:
+    - { regexp: '^#?\s*Port ', line: 'Port {{ ssh_port_new }}' }
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Restart SSH service"
+  service:
+    name: ssh
+    state: restarted
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Get IP addresses of the remote server"
+  shell: ip -o -4 addr list | awk '{print $4}' | cut -d/ -f1
+  register: remote_server_ips_result
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Set `remote_server_ips` from `remote_server_ips_result"
+  set_fact:
+    remote_server_ips: "{{ remote_server_ips_result.stdout.split('\n') }}"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Set `is_proxmox_accessed_directly` boolean value"
+  set_fact:
+    is_proxmox_accessed_directly: "{{ ansible_host in remote_server_ips }}"
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Replace the `ssh_port` in the local inventory file"
+  delegate_to: localhost
+  replace:
+    path: "{{ ansible_inventory_sources[0] }}"
+    regexp: '(^{{ inventory_hostname }}.*ansible_host={{ ansible_host }}.*ansible_user={{ ansible_user }}.*ansible_port=){{ ansible_port }}(\s*#.*)?$'
+    replace: '# \g<1>{{ ansible_port }} # Commented by `ssh_port.yml`\n\g<1>{{ ssh_port_new }} # Added by `ssh_port.yml`'
+  when: is_proxmox_accessed_directly
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Execute `border_message.py` Python script on localhost to display the message"
+  shell: |
+    python3 includes/border_message.py "Since this proxmox is not accessed directly,
+      please change the port forwarding to the new ssh port,
+      redirect \`{{ ansible_port }}\` port to ----------> \`{{ ssh_port_new }}\` port instead,
+      in your firewall (if port forwarding done through firewall),
+      OR,
+      modifying the following lines in \`/etc/network/interfaces\` under \`vmbr1\`
+      \`post-up iptables -t nat -A PREROUTING -i vmbr0 -p tcp --dport {{ ansible_port }}
+      -j DNAT --to <<MACHINE IP GOES HERE>>:{{ ssh_port_new }}\` and
+      \`post-down iptables -t nat -D PREROUTING -i vmbr0 -p tcp --dport {{ ansible_port }} 
+      -j DNAT --to <<MACHINE IP GOES HERE>>:{{ ssh_port_new }}\` and reboot
+      OR
+      running the \`iptables\` command directly if you want to run in a non persistent way.
+      \`iptables -t nat -D PREROUTING -i vmbr0 -p tcp --dport {{ ansible_port }} 
+      -j DNAT --to <<MACHINE IP GOES HERE>>:<<SSH OLD PORT GOES HERE>> & 
+      iptables -t nat -A PREROUTING -i vmbr0 -p tcp --dport {{ ansible_port }} 
+      -j DNAT --to <<MACHINE IP GOES HERE>>:{{ ssh_port_new }} && 
+      iptables -t nat -L PREROUTING -n -v\`." {{ terminal_width }}
+  register: message_output
+  delegate_to: localhost
+  changed_when: false
+  run_once: true
+  when: not is_proxmox_accessed_directly
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Show the above message"
+  delegate_to: localhost
+  pause:
+    prompt: "{{ message_output.stdout }}\nPress a key to continue and restart script to continue further."
+  run_once: true
+  when: not is_proxmox_accessed_directly
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Execute `border_message.py` Python script on localhost to display the message"
+  shell: |
+    python3 includes/border_message.py "This proxmox is accessed directly,
+      please use the new SSH port to connect here afterwards,
+      changes to the inventory.yml file have been automatically made." {{ terminal_width }}
+  register: message_output
+  delegate_to: localhost
+  changed_when: false
+  run_once: true
+  when: is_proxmox_accessed_directly
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Show the above message"
+  delegate_to: localhost
+  pause:
+    prompt: "{{ message_output.stdout }}\nPress a key to continue and restart script to continue further."
+  run_once: true
+  when: is_proxmox_accessed_directly
+
+- name: "End Script"
+  meta: end_play

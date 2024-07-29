@@ -9,7 +9,8 @@
 #     04. Post install script
 #     05. Update and upgrade
 #     06. Install common packages
-#     07. Post Completion Tasks and Cleanup (TASK only)
+#     07. SSH Port
+#     08. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -22,6 +23,7 @@
     is_condition_post_install_script: false
     is_condition_update_and_upgrade: false
     is_condition_install_common_packages: false
+    is_condition_ssh_port: false
     is_condition_post_completion_tasks_and_cleanup: false
 
   vars_files:
@@ -84,6 +86,17 @@
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Install common packages`, Caller block"
       include_tasks: tasks/install_common_packages.yml
       when: is_condition_install_common_packages
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `SSH Port`
+    - name: ""
+      import_tasks: tasks_conditions/ssh_port.yml
+
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `SSH Port`, Caller block"
+      include_tasks: tasks/ssh_port.yml
+      when: is_condition_ssh_port
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

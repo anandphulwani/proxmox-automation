@@ -5,7 +5,12 @@ import shutil
 import ansible_runner
 from getpass import getpass
 
+playbook_on_task_start=None
+
 def event_handler(event):
+    global playbook_on_task_start
+    if event['event'] in ['playbook_on_task_start']:
+        playbook_on_task_start = event['stdout']
     if event['event'] in ['playbook_on_play_start', 'playbook_on_stats']:
         print(event['stdout'])
         if event['event'] == 'playbook_on_stats':
@@ -16,13 +21,13 @@ def event_handler(event):
         pass
     elif event['event'] in ['playbook_on_task_start'] and event['event_data']['task_action'] == 'include_tasks':
         pass
-    elif event['event'] in [
-                            'runner_on_ok', 'runner_item_on_ok', 
-                            'runner_on_failed', 'runner_item_on_failed', 
-                            'playbook_on_task_start'
-                            ]:
+    elif event['event'] in ['runner_on_failed', 'runner_item_on_failed']:
+        print(playbook_on_task_start) if playbook_on_task_start is not None else None
+        print(event['stdout'])
+    elif event['event'] in ['runner_on_ok', 'runner_item_on_ok']:
         task_name = event['event_data']['task']
         if not re.match(r'^\d{2}-Task_Condition:', task_name):
+            print(playbook_on_task_start) if playbook_on_task_start is not None else None
             print(event['stdout'])
     else: # 'runner_on_start',
         print(event['stdout'])

@@ -1,0 +1,111 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`SSH Login with Key`"
+    ssh_local_public_key_path_stat: null
+    ssh_remote_public_key_path_stat: null
+    ssh_local_public_key_file_sha1_checksum: null
+    datetime_of_checksum: null
+    is_ssh_file_changed_after_checksum_file: null
+    ssh_local_public_key_file: null
+    ssh_local_public_key_file_content: null
+    ssh_remote_public_key_file: null
+    ssh_remote_public_key_file_content: null
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Ensure `/root/.ssh` directory exists"
+  file:
+    path: /root/.ssh
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: "0700"
+
+# ssh_local_public_key_path
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `ssh_local_public_key_path` is defined and not empty"
+  fail:
+    msg: "The variable 'ssh_local_public_key_path' is not defined or is empty."
+  when: ssh_local_public_key_path is not defined or ssh_local_public_key_path == '' or ssh_local_public_key_path is none
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if `ssh_local_public_key_path` file exists"
+  local_action:
+    module: stat
+    path: "{{ current_working_dir }}/{{ ssh_local_public_key_path }}"
+  register: ssh_local_public_key_path_stat
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Fail if `ssh_local_public_key_path` file doesn't exists"
+  fail:
+    msg: "The local file '{{ current_working_dir }}/{{ ssh_local_public_key_path }}' does not exist."
+  when: not ssh_local_public_key_path_stat.stat.exists
+
+# ssh_remote_public_key_path
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if `ssh_remote_public_key_path` is defined and not empty"
+  fail:
+    msg: "The variable 'ssh_remote_public_key_path' is not defined or is empty."
+  when: ssh_remote_public_key_path is not defined or ssh_remote_public_key_path == '' or ssh_remote_public_key_path is none
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Check if `ssh_remote_public_key_path` file exists"
+  stat:
+    path: "{{ ssh_remote_public_key_path }}"
+  register: ssh_remote_public_key_path_stat
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Fail if `ssh_remote_public_key_path` file doesn't exists"
+  fail:
+    msg: "The file '{{ ssh_remote_public_key_path }}' does not exist."
+  when: not ssh_remote_public_key_path_stat.stat.exists
+
+# `ssh_local_public_key_path`: local file checksum calculation
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Create SHA1 checksum of the local file"
+  local_action:
+    module: shell
+    cmd: sha1sum "{{ current_working_dir }}/{{ ssh_local_public_key_path }}" | awk '{print $1}'
+  register: ssh_local_public_key_file_sha1_checksum
+  changed_when: false
+
+# `ssh_local_public_key_path`: get remote checksum file if present and its time
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Get the latest .checksum temp file if it exits"
+  shell: ls -1r /root/proxmox_automation_install/task_ssh_login_with_key_*_{{ ssh_local_public_key_file_sha1_checksum.stdout }}.checksum.tmp | head -n 1 | grep -oP "[^_]*_\K[0-9]{8}-[0-9]{6}"
+  register: datetime_of_checksum
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Check if datetime of checksum is not older than modification time of ssh key file"
+  shell: "[ $(date -d \"$(echo \"{{ datetime_of_checksum.stdout }}\" | sed -E 's/([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})/\\1-\\2-\\3 \\4:\\5:\\6/')\" +%s) -le $(date -d \"@{{ ssh_remote_public_key_path_stat.stat.mtime }}\" +%s) ]"
+  register: is_ssh_file_changed_after_checksum_file
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: datetime_of_checksum.rc == 0 
+
+# Read `ssh_local_public_key_path` and `ssh_remote_public_key_path` contents and compare
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Read `ssh_local_public_key_path` file content"
+  local_action:
+    module: slurp
+    src: "{{ current_working_dir }}/{{ ssh_local_public_key_path }}"
+  register: ssh_local_public_key_file
+  when: datetime_of_checksum.rc != 0 or is_ssh_file_changed_after_checksum_file.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Decode `ssh_local_public_key_path` file content"
+  set_fact:
+    ssh_local_public_key_file_content: "{{ ssh_local_public_key_file.content | b64decode }}"
+  when: datetime_of_checksum.rc != 0 or is_ssh_file_changed_after_checksum_file.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Fetch remote `ssh_remote_public_key_path` file content"
+  slurp:
+    src: "{{ ssh_remote_public_key_path }}"
+  register: ssh_remote_public_key_file
+  when: datetime_of_checksum.rc != 0 or is_ssh_file_changed_after_checksum_file.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Decode remote `ssh_remote_public_key_path` file content"
+  set_fact:
+    ssh_remote_public_key_file_content: "{{ ssh_remote_public_key_file.content | b64decode }}"
+  when: datetime_of_checksum.rc != 0 or is_ssh_file_changed_after_checksum_file.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Set `is_condition_ssh_login_with_key` based on conditions"
+  set_fact:
+    is_condition_ssh_login_with_key: true
+  when: datetime_of_checksum.rc != 0 or is_ssh_file_changed_after_checksum_file.rc == 0

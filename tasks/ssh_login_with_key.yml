@@ -1,0 +1,108 @@
+# https://forum.proxmox.com/threads/setup-ssh-keys.93134/
+# https://forum.proxmox.com/threads/how-to-add-own-ssh-key-for-root-user.91195/
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`SSH Login with Key`"
+    is_local_public_key_file_content_added: null
+    is_config_modification_done: null
+    id_rsa_files: null
+    rsa_file_name: null
+    message_output: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current SSH config"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/ssh/ && cp /etc/ssh/sshd_config /root/proxmox_automation_install/backups/etc/ssh/sshd_config_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current SSH authorized_keys"
+  shell: mkdir -p /root/proxmox_automation_install/backups{{ ssh_remote_public_key_path | regex_replace('/[^/]+$', '') }} && cp {{ ssh_remote_public_key_path }} /root/proxmox_automation_install/backups{{ ssh_remote_public_key_path }}_$(date +%Y%m%d-%H%M%S)
+  when: ssh_remote_public_key_path_stat.stat.exists
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Append local public key to remote authorized_keys if not present"
+  lineinfile:
+    path: "{{ ssh_remote_public_key_path }}"
+    line: "{{ ssh_local_public_key_file_content }}"
+    create: yes
+    owner: "root"
+    group: "root"
+    mode: '0600'
+  register: is_local_public_key_file_content_added
+  when: ssh_local_public_key_file_content not in ssh_remote_public_key_file_content
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Ensure SSH daemon configuration for using SSH keys instead of password"
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    validate: /usr/sbin/sshd -t -f %s
+  register: is_config_modification_done
+  with_items:
+    - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+    - { regexp: '^#?PubkeyAuthentication', line: 'PubkeyAuthentication yes' }
+    - { regexp: '^#?AuthorizedKeysFile', line: 'AuthorizedKeysFile {{ ssh_remote_public_key_path }}' }
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Restart SSH service"
+  service:
+    name: ssh
+    state: restarted
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Find files ending with .id_rsa in the current working directory"
+  delegate_to: localhost
+  find:
+    paths: "{{ current_working_dir }}"
+    patterns: "*.id_rsa"
+    file_type: file
+  register: id_rsa_files
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Check if exactly one .id_rsa file is found"
+  set_fact:
+    rsa_file_name: "{{ id_rsa_files.files[0].path | basename}}"
+  when: id_rsa_files.matched == 1
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Fail if not exactly one .id_rsa file is found"
+  fail:
+    msg: "Expected exactly one .id_rsa file, but found {{ id_rsa_files.matched }}."
+  when: id_rsa_files.matched != 1
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Replace the `ssh_port` in the local inventory file"
+  delegate_to: localhost
+  replace:
+    path: "{{ ansible_inventory_sources[0] }}"
+    regexp: '(^{{ inventory_hostname }}.*ansible_host={{ ansible_host }}.*ansible_user={{ ansible_user }}.*ansible_port={{ ansible_port }})([ ]*#.*)?$'
+    replace: '# \g<1> # Commented by `ssh_port.yml`\n\g<1> ansible_private_key_file=./{{ rsa_file_name }} # Added by `ssh_port.yml`'
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Touching checksum file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_ssh_login_with_key_* && sleep 2 && touch /root/proxmox_automation_install/task_ssh_login_with_key_$(date +%Y%m%d-%H%M%S)_{{ ssh_local_public_key_file_sha1_checksum.stdout }}.checksum.tmp"
+  ignore_errors: true
+  changed_when: false
+  failed_when: false
+  when: is_local_public_key_file_content_added is not failed and is_config_modification_done is not failed
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Execute `border_message.py` Python script on localhost to display the message"
+  delegate_to: localhost
+  shell: |
+    python3 includes/border_message.py "It is possible that the proxmox allows password based
+    authentication because \`/etc/ssh/sshd_config\` file may
+    contain \`Include /etc/ssh/sshd_config.d/*.conf\` and the
+    directory may contain a file \`50-cloud-init.conf\` which 
+    may contain the line \`PasswordAuthentication yes\` because
+    of which password based authentication will remain active.
+    
+    You can remove \`--ask-pass\` from the script calling 
+    command from here on." {{ terminal_width }}
+  register: message_output
+  changed_when: false
+  run_once: true
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Show the above message"
+  delegate_to: localhost
+  pause:
+    prompt: "{{ message_output.stdout }}\nPress a key to continue and restart script to continue further."
+  run_once: true
+  when: not is_proxmox_accessed_directly
+
+- name: "End Script"
+  meta: end_play

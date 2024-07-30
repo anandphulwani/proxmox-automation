@@ -1,0 +1,21 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Timezone`"
+    is_timezone_set: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Set the timezone"
+  shell: "timedatectl set-timezone '{{ timezone }}'"
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check the timezone for verification"
+  shell: "timedatectl status | grep -qo 'Time zone: {{ timezone }}'"
+  register: is_timezone_set
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Fail if the timezone is not set"
+  fail:
+    msg: "Unable to set the timezone to '{{ timezone }}'"
+  when: is_timezone_set.rc != 0

@@ -1,2 +1,3 @@
 [<<HostGroup>>]
-<<Host01-Hostname>> ansible_host=<<Host01-IPAddr>> ansible_user=<<Host01-Username>> ansible_port=<<Host01-DefaultSSHPort>>
+# <<Host01-Hostname>> ansible_host=<<Host01-IPAddr>> ansible_user=<<Host01-Username>> ansible_port=<<Host01-DefaultSSHPort>>
+<<Host01-Hostname>> ansible_host=<<Host01-IPAddr>> ansible_user=<<Host01-Username>> ansible_port=<<Host01-SSHPortNew>>

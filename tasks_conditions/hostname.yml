@@ -1,0 +1,23 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Hostname`"
+    is_hostname_already_set: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `hostname` is defined and not empty"
+  fail:
+    msg: "The variable 'hostname' is not defined or is empty."
+  when: hostname is not defined or hostname == '' or hostname is none
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `hostname` is already set"
+  shell: "hostname | grep -qo '^{{ hostname }}$'"
+  register: is_hostname_already_set
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Set `is_condition_hostname` based on conditions"
+  set_fact:
+    is_condition_hostname: true
+  when: is_hostname_already_set.rc != 0

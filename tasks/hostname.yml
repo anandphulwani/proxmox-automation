@@ -1,0 +1,71 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Hostname`"
+    old_hostname_from_hostname_command: null
+    old_hostname_from_hosts_file: null
+    current_hostname_result: null
+    current_hostname: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current `/etc/hostname`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/ && cp /etc/hostname /root/proxmox_automation_install/backups/etc/hostname_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current `/etc/hosts`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/ && cp /etc/hosts /root/proxmox_automation_install/backups/etc/hosts_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Get the machine old hostname"
+  command: hostname
+  register: old_hostname_from_hostname_command
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Update `/etc/hostname`"
+  copy:
+    content: "{{ hostname }}\n"
+    dest: /etc/hostname
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Get the current hostname from `/etc/hosts`"
+  command:
+    cmd: awk '/127.0.1.1/ {print $2}' /etc/hosts
+  register: old_hostname_from_hosts_file
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Replace old hostname from hostname command with new hostname in `/etc/hosts`"
+  replace:
+    path: /etc/hosts
+    regexp: " {{ old_hostname_from_hostname_command.stdout }}$"
+    replace: " {{ hostname }}"
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Replace old hostname from hosts file with new hostname in `/etc/hosts`"
+  replace:
+    path: /etc/hosts
+    regexp: " {{ old_hostname_from_hosts_file.stdout }}$"
+    replace: " {{ hostname }}"
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Set hostname using the hostname module"
+  hostname:
+    name: "{{ hostname }}"
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Restart `networking` service"
+  service:
+    name: networking
+    state: restarted
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Get the machine new hostname"
+  command: hostname
+  register: current_hostname_result
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Set the `current_hostname` from `current_hostname_result`"
+  set_fact:
+    current_hostname: "{{ current_hostname_result.stdout }}"
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Fail if hostname hasnt changed"
+  fail:
+    msg: "Unable to set `hostname` to {{ hostname }}."
+  when: current_hostname != hostname

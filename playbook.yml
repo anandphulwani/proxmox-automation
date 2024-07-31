@@ -13,7 +13,8 @@
 #     08. SSH Port
 #     09. SSH Login with Key
 #     10. Timezone
-#     11. Post Completion Tasks and Cleanup (TASK only)
+#     11. Update time from NTP
+#     12. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -29,6 +30,7 @@
     is_condition_ssh_port: false
     is_condition_ssh_login_with_key: false
     is_condition_timezone: false
+    is_condition_update_time_from_ntp: false
     is_condition_post_completion_tasks_and_cleanup: false
 
   vars_files:
@@ -131,6 +133,17 @@
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Timezone`, Caller block"
       include_tasks: tasks/timezone.yml
       when: is_condition_timezone
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `Update time from NTP` (will run only once, until 24 hours are passed or until forced)
+    - name: ""
+      import_tasks: tasks_conditions/update_time_from_ntp.yml
+
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Update time from NTP`, Caller block"
+      include_tasks: tasks/update_time_from_ntp.yml
+      when: is_condition_update_time_from_ntp
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

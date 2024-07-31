@@ -1,0 +1,74 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Update time from NTP`"
+    required_packages:
+      - ntpdate
+    package_check_results: null
+    missing_packages: []
+    result_update_time_from_ntp: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Filter out already installed packages"
+  set_fact:
+    required_packages: "{{ required_packages | difference(already_installed_packages) }}"
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if required packages are installed"
+  command: "dpkg-query -W -f='${Package} ${Status}\n' {{ required_packages | join(' ') }}"
+  register: package_check_results
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Collect missing packages from stdout"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.0] }}"
+  loop: "{{ package_check_results.stdout_lines | map('split', ' ') | map('list') | list }}"
+  when: 
+  - required_packages is defined and required_packages | length > 0
+  - "item[1] != 'install' or item[2] != 'ok' or item[3] != 'installed'"
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Collect missing packages from stderr"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.split(' ')[-1]] }}"
+  loop: "{{ package_check_results.stderr_lines }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "'no packages found matching' in item"
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Install missing required packages"
+  apt:
+    name: "{{ missing_packages }}"
+    state: present
+  when: missing_packages is defined and missing_packages | length > 0
+
+# For when the `missing_packages` are installed
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Add new installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + missing_packages) | unique }}"
+  when: missing_packages is defined and missing_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Run ntpdate commands in sequence until one succeeds"
+  shell: |
+    ntpdate pool.ntp.org || \
+    ntpdate time.google.com || \
+    ntpdate time.windows.com || \
+    ntpdate time.cloudflare.com || \
+    ntpdate time.nist.gov
+  register: result_update_time_from_ntp
+  ignore_errors: yes
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Fail if the updating time fails"
+  fail:
+    msg: "Unable to update time from NTP servers."
+  when: result_update_time_from_ntp.rc != 0 or 
+        not result_update_time_from_ntp.stdout | regex_search("^\d{4}-\d{2}-\d{2} .+ \+/- [\d\.]+ [\d\w\.]+ [\d\.]+ .*$")
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Touching run file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_update_time_from_ntp_* && sleep 2 && touch /root/proxmox_automation_install/task_update_time_from_ntp_$(date +%Y%m%d-%H%M%S).run.tmp"
+  ignore_errors: true
+  changed_when: false
+  failed_when: false
+  when: result_update_time_from_ntp is not failed and 
+        result_update_time_from_ntp.stdout | regex_search("^\d{4}-\d{2}-\d{2} .+ \+/- [\d\.]+ [\d\w\.]+ [\d\.]+ .*$")

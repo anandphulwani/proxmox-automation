@@ -1,0 +1,40 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`WebGUI Port`"
+    webgui_port_old_present: null
+  changed_when: false
+
+# webgui_port_old
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `webgui_port_old` is defined and not empty"
+  fail:
+    msg: "The variable 'webgui_port_old' is not defined or is empty."
+  when: webgui_port_old is not defined or webgui_port_old == '' or webgui_port_old is none
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `webgui_port_old` matches the regex pattern"
+  fail:
+    msg: "The variable 'webgui_port_old' value: '{{ webgui_port_old }}' is not a valid value."
+  when: not webgui_port_old | regex_search("^\d{2,5}$")
+
+# webgui_port_new
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if `webgui_port_new` is defined and not empty"
+  fail:
+    msg: "The variable 'webgui_port_new' is not defined or is empty."
+  when: webgui_port_new is not defined or webgui_port_new == '' or webgui_port_new is none
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if `webgui_port_new` matches the regex pattern"
+  fail:
+    msg: "The variable 'webgui_port_new' value: '{{ webgui_port_new }}' is not a valid value."
+  when: not webgui_port_new | regex_search("^\d{2,5}$")
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if any `webgui_port_old` is present in files"
+  shell: grep -qrwl '{{ webgui_port_old }}' /usr/share/perl5/PVE/
+  register: webgui_port_old_present
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Set `is_condition_webgui_port` based on conditions"
+  set_fact:
+    is_condition_webgui_port: true
+  when: webgui_port_old_present.rc == 0

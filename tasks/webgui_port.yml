@@ -1,0 +1,41 @@
+# https://forum.proxmox.com/threads/possible-to-change-proxmox-default-port-now.111102/page-2
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`WebGUI Port`"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup `/usr/share/perl5/PVE/` directory"
+  shell: mkdir -p /root/proxmox_automation_install/backups/usr/share/perl5/ && tar cvf /root/proxmox_automation_install/backups/usr/share/perl5/PVE_$(date +%Y%m%d-%H%M%S).bak.tar /usr/share/perl5/PVE/
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current `/etc/sysctl.d/50-unprivileged-ports.conf`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/sysctl.d/ && cp /etc/sysctl.d/50-unprivileged-ports.conf /root/proxmox_automation_install/backups/etc/sysctl.d/50-unprivileged-ports.conf_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Replace port `webgui_port_old` with `webgui_port_new` in `/usr/share/perl5/PVE/`"
+  shell: grep -rwl '{{ webgui_port_old }}' /usr/share/perl5/PVE/ | xargs sed -i 's|{{ webgui_port_old }}|{{ webgui_port_new }}|g'
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Create `/etc/sysctl.d/50-unprivileged-ports.conf`"
+  copy:
+    dest: /etc/sysctl.d/50-unprivileged-ports.conf
+    content: 'net.ipv4.ip_unprivileged_port_start=0'
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Apply `sysctl` settings"
+  command: sysctl --system
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Restart `pveproxy` service"
+  service:
+    name: pveproxy
+    state: restarted
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
+  reboot:
+    msg: "Reboot initiated by Ansible for `webgui port change` and `sysctl` changes"
+    reboot_timeout: 600
+  when: is_condition_post_completion_tasks_and_cleanup is not defined
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Set `is_condition_post_completion_tasks_and_cleanup` to true if `is_condition_post_completion_tasks_and_cleanup` is defined"
+  set_fact:
+    is_condition_post_completion_tasks_and_cleanup: true
+  when: is_condition_post_completion_tasks_and_cleanup is defined

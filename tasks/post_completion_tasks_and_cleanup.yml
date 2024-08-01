@@ -1,0 +1,11 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Post Completion Tasks and Cleanup`"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Reboot the server"
+  reboot:
+    msg: "Reboot initiated by `Post Completion Tasks and Cleanup.yml`"
+    reboot_timeout: 600
+  when: is_condition_webgui_port

@@ -4,3 +4,5 @@ ssh_local_public_key_path: "<<ssh_local_public_key_path>>"
 ssh_remote_public_key_path: "<<ssh_remote_public_key_path>>" # Usual value: "/root/.ssh/authorized_keys"
 timezone: "<<timezone>>" # Usual value: "Asia/Kolkata"
 hostname: "<<hostname>>"
+webgui_port_old: <<webgui_port_old>> # Usual value: 8006
+webgui_port_new: <<webgui_port_new>> # any port between 1024-49151 not used by any other application, safe to use port about 10000

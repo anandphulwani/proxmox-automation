@@ -1,0 +1,18 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Smartctl`"
+    smartctl_output: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Run command to enable smartctl on all disks"
+  shell: |
+    for disk in $(lsblk -d -o NAME | grep -E '^[a-z]'); do
+      if smartctl -i /dev/$disk | grep -q "SMART support is: Disabled"; then
+        echo "Enabling SMART on /dev/$disk"
+        smartctl -s on /dev/$disk
+      fi
+    done
+  register: smartctl_output
+  failed_when: smartctl_output.rc != 0
+  changed_when: "'Enabling SMART' in smartctl_output.stdout"

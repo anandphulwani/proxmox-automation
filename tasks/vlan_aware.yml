@@ -1,0 +1,51 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`VLAN aware`"
+    bridge_vlan_aware_parameter_exists: null
+    bridge_vids_parameter_exists: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current `/etc/network/interfaces`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/network/ && cp /etc/network/interfaces /root/proxmox_automation_install/backups/etc/network/interfaces_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `bridge-vlan-aware yes` exists in the `etcNetworkInterfaces_content` content"
+  set_fact:
+    bridge_vlan_aware_parameter_exists: "{{ (etcNetworkInterfaces_content | regex_search('iface vmbr0(?!.*inet6).*?(?:\\n[ \\t].*)*\\n', multiline=True)) | regex_search('\\n[ \\t]bridge-vlan-aware\\s+.*\\n') is not none }}"
+  changed_when: false
+  when: not bridge_vlan_aware_yes_exists
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Replace existing `bridge-vlan-aware` parameter with actual value in `/etc/network/interfaces`"
+  replace:
+    path: /etc/network/interfaces
+    regexp: '^([ \t]*)bridge-vlan-aware\s+(?!yes\s*$).*$'
+    replace: '\1bridge-vlan-aware yes'
+  when: not bridge_vlan_aware_yes_exists and bridge_vlan_aware_parameter_exists
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Add `bridge-vlan-aware yes` to the end of the block in `/etc/network/interfaces`"
+  replace:
+    path: /etc/network/interfaces
+    regexp: '(iface vmbr0(?!.*inet6).*?(?:\n*[ \t].*)*\n([ \t]+).*)'
+    replace: '\1\n\2bridge-vlan-aware yes'
+  when: not bridge_vlan_aware_yes_exists and not bridge_vlan_aware_parameter_exists
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if `bridge-vids 2-4094` exists in the `etcNetworkInterfaces_content` content"
+  set_fact:
+    bridge_vids_parameter_exists: "{{ (etcNetworkInterfaces_content | regex_search('iface vmbr0(?!.*inet6).*?(?:\\n[ \\t].*)*\\n', multiline=True)) | regex_search('\\n[ \\t]bridge-vids\\s+.*\\n') is not none }}"
+  changed_when: false
+  when: not bridge_vids_2_4094_exists
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Replace existing `bridge-vids` parameter with actual value in `/etc/network/interfaces`"
+  replace:
+    path: /etc/network/interfaces
+    regexp: '^([ \t]*)bridge-vids\s+(?!2-4094\s*$).*$'
+    replace: '\1bridge-vids 2-4094'
+  when: not bridge_vids_2_4094_exists and bridge_vids_parameter_exists
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Add `bridge-vids 2-4094` to the end of the block in `/etc/network/interfaces`"
+  replace:
+    path: /etc/network/interfaces
+    regexp: '(iface vmbr0(?!.*inet6).*?(?:\n*[ \t].*)*\n([ \t]+).*)'
+    replace: '\1\n\2bridge-vids 2-4094'
+  when: not bridge_vids_2_4094_exists and not bridge_vids_parameter_exists

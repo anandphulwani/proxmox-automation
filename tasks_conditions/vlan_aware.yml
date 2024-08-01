@@ -1,0 +1,43 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`VLAN aware`"
+    etcNetworkInterfaces_slurped_file: null
+    etcNetworkInterfaces_content: null
+    etcNetworkInterfaces_vmbr0_block_exists: null
+    bridge_vlan_aware_yes_exists: null
+    bridge_vids_2_4094_exists: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Slurp the contents of `/etc/network/interfaces`"
+  slurp:
+    src: /etc/network/interfaces
+  register: etcNetworkInterfaces_slurped_file
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Parse the file content to `etcNetworkInterfaces_content` variable"
+  set_fact:
+    etcNetworkInterfaces_content: "{{ etcNetworkInterfaces_slurped_file['content'] | b64decode }}"
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if `iface vmbr0` block exists in the `etcNetworkInterfaces_content`"
+  set_fact:
+    etcNetworkInterfaces_vmbr0_block_exists: "{{ etcNetworkInterfaces_content is search('iface vmbr0(?!.*inet6).*?(?:\\n[ \\t].*)*\\n') }}"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Fail if `iface vmbr0` block does not exist"
+  fail:
+    msg: "The `iface vmbr0` block was not found in `/etc/network/interfaces`."
+  when: not etcNetworkInterfaces_vmbr0_block_exists
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if `bridge-vlan-aware yes` exists in the `iface vmbr0` block"
+  set_fact:
+    bridge_vlan_aware_yes_exists: "{{ (etcNetworkInterfaces_content | regex_search('iface vmbr0(?!.*inet6).*?(?:\\n[ \\t].*)*\\n', multiline=True)) | regex_search('\\n[ \\t]bridge-vlan-aware\\s+yes[ \\t]*\\n') is not none }}"
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Check if `bridge-vids 2-4094` exists in the `iface vmbr0` block"
+  set_fact:
+    bridge_vids_2_4094_exists: "{{ (etcNetworkInterfaces_content | regex_search('iface vmbr0(?!.*inet6).*?(?:\\n[ \\t].*)*\\n', multiline=True)) | regex_search('\\n[ \\t]bridge-vids\\s+2-4094[ \\t]*\\n') is not none }}"
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Set `is_condition_vlan_aware` based on conditions"
+  set_fact:
+    is_condition_vlan_aware: true
+  when: not bridge_vlan_aware_yes_exists or not bridge_vids_2_4094_exists

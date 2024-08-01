@@ -1,0 +1,77 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`IOMMU modules`"
+    etcModules_vfio_added: null
+    etcModules_vfio_iommu_type1_added: null
+    etcModules_vfio_pci_added: null
+    etcModules_vfio_virqfd_added: null
+    is_grub_updated: null
+    is_initramfs_updated: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current `/etc/modules`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/ && cp /etc/modules /root/proxmox_automation_install/backups/etc/modules_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+# In `/etc/modules` add `vfio` if it doesn't exist
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Add `vfio` if it doesn't exist in `/etc/modules`"
+  lineinfile:
+    path: /etc/modules
+    line: "vfio"
+    insertafter: EOF
+  register: etcModules_vfio_added
+  when: not etcModules_vfio_exists
+
+# In `/etc/modules` add `vfio_iommu_type1` if it doesn't exist
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Add `vfio_iommu_type1` if it doesn't exist in `/etc/modules`"
+  lineinfile:
+    path: /etc/modules
+    line: "vfio_iommu_type1"
+    insertafter: EOF
+  register: etcModules_vfio_iommu_type1_added
+  when: not etcModules_vfio_iommu_type1_exists
+
+# In `/etc/modules` add `vfio_pci` if it doesn't exist
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Add `vfio_pci` if it doesn't exist in `/etc/modules`"
+  lineinfile:
+    path: /etc/modules
+    line: "vfio_pci"
+    insertafter: EOF
+  register: etcModules_vfio_pci_added
+  when: not etcModules_vfio_pci_exists
+
+# In `/etc/modules` add `vfio_virqfd` if it doesn't exist
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Add `vfio_virqfd` if it doesn't exist in `/etc/modules`"
+  lineinfile:
+    path: /etc/modules
+    line: "vfio_virqfd"
+    insertafter: EOF
+  register: etcModules_vfio_virqfd_added
+  when: not etcModules_vfio_virqfd_exists
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Update grub if `/etc/modules` file changed"
+  command: update-grub
+  register: is_grub_updated
+  when: is_condition_post_completion_tasks_and_cleanup is not defined and
+        (etcModules_vfio_added.changed or etcModules_vfio_iommu_type1_added.changed or 
+        etcModules_vfio_pci_added.changed or etcModules_vfio_virqfd_added.changed)
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Update initramfs"
+  command: update-initramfs -u
+  register: is_initramfs_updated
+  when: is_condition_post_completion_tasks_and_cleanup is not defined and
+        (etcModules_vfio_added.changed or etcModules_vfio_iommu_type1_added.changed or 
+        etcModules_vfio_pci_added.changed or etcModules_vfio_virqfd_added.changed)
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Reboot the server"
+  reboot:
+    msg: "Reboot initiated for changing the `IOMMU modules`"
+    reboot_timeout: 600
+  when: is_condition_post_completion_tasks_and_cleanup is not defined and 
+        (is_grub_updated.changed or is_initramfs_updated.changed)
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Set `is_condition_post_completion_tasks_and_cleanup` to true if `is_condition_post_completion_tasks_and_cleanup` is defined"
+  set_fact:
+    is_condition_post_completion_tasks_and_cleanup: true
+  when: is_condition_post_completion_tasks_and_cleanup is defined

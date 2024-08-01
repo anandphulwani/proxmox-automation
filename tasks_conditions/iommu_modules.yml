@@ -1,0 +1,35 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`IOMMU modules`"
+    etcModules_slurped_file: null
+    etcModules_content: null
+    etcModules_vfio_exists: null
+    etcModules_vfio_iommu_type1_exists: null
+    etcModules_vfio_pci_exists: null
+    etcModules_vfio_virqfd_exists: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Slurp the contents of `/etc/modules`"
+  slurp:
+    src: /etc/modules
+  register: etcModules_slurped_file
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Parse the file content to `etcModules_content` variable"
+  set_fact:
+    etcModules_content: "{{ etcModules_slurped_file['content'] | b64decode }}"
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if various modules exists in the `etcModules_content`"
+  set_fact:
+    etcModules_vfio_exists: "{{ etcModules_content | regex_search('^vfio$', multiline=True) is not none }}"
+    etcModules_vfio_iommu_type1_exists: "{{ etcModules_content | regex_search('^vfio_iommu_type1$', multiline=True) is not none }}"
+    etcModules_vfio_pci_exists: "{{ etcModules_content | regex_search('^vfio_pci$', multiline=True) is not none }}"
+    etcModules_vfio_virqfd_exists: "{{ etcModules_content | regex_search('^vfio_virqfd$', multiline=True) is not none }}"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Set `is_condition_iommu_modules` based on conditions"
+  set_fact:
+    is_condition_iommu_modules: true
+  when: not etcModules_vfio_exists or not etcModules_vfio_iommu_type1_exists
+        or not etcModules_vfio_pci_exists or not etcModules_vfio_virqfd_exists

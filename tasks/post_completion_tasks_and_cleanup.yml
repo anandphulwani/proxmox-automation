@@ -6,14 +6,14 @@
 
 - name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Update grub"
   command: update-grub
-  when: is_condition_iommu
+  when: is_condition_iommu or is_condition_iommu_modules
 
 - name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Update initramfs"
   command: update-initramfs -u -k all
-  when: is_condition_iommu
+  when: is_condition_iommu or is_condition_iommu_modules
 
 - name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Reboot the server"
   reboot:
     msg: "Reboot initiated by `Post Completion Tasks and Cleanup.yml`"
     reboot_timeout: 600
-  when: is_condition_webgui_port or is_condition_iommu
+  when: is_condition_webgui_port or is_condition_iommu or is_condition_iommu_modules

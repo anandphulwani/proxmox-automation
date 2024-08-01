@@ -19,7 +19,8 @@
 #     14. WebGUI Port
 #     15. Smartctl
 #     16. VLAN aware
-#     17. Post Completion Tasks and Cleanup (TASK only)
+#     17. IOMMU
+#     18. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -40,6 +41,7 @@
     is_condition_webgui_port: false
     is_condition_smartctl: false
     is_condition_vlan_aware: false
+    is_condition_iommu: false
     is_condition_post_completion_tasks_and_cleanup: false
 
   vars_files:
@@ -204,6 +206,17 @@
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `VLAN aware`, Caller block"
       include_tasks: tasks/vlan_aware.yml
       when: is_condition_vlan_aware
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `IOMMU`
+    - name: ""
+      import_tasks: tasks_conditions/iommu.yml
+
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `IOMMU`, Caller block"
+      include_tasks: tasks/iommu.yml
+      when: is_condition_iommu
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

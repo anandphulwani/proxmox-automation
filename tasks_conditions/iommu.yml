@@ -1,0 +1,100 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`IOMMU`"
+    is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub: null
+    is_iommu_enabled: null
+    is_iommu_remapping_enabled: null
+    is_iommu_pt_enabled: null
+    is_intel_iommu_or_amd_iommu_present_in_grub: null
+    is_iommu_pt_present_in_grub: null
+    lscpu_output: null
+    cpu_vendor: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `intel_iommu` or `amd_iommu` parameter and `iommu=pt` is already present in the loaded grub"
+  shell: cat /proc/cmdline | grep -Ee "BOOT_IMAGE.*[ =](intel|amd)_iommu=on" | grep -qEe "BOOT_IMAGE.*[ =]iommu=pt"
+  register: is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if PCIE passthrough, IOMMU enabled"
+  shell: dmesg | grep -qEe "IOMMU enabled|IOMMU.*loaded and initialized"
+  register: is_iommu_enabled
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if PCIE IOMMU remapping enabled"
+  shell: dmesg | grep -qEe "Queued invalidation will be enabled to support .* Intr-remapping|Interrupt remapping enabled"
+  register: is_iommu_remapping_enabled
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if PCIE passthrough, IOMMU mode is passthrough"
+  shell: "dmesg | grep -qEe \"iommu: .* Passthrough .*\""
+  register: is_iommu_pt_enabled
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if `intel_iommu` or `amd_iommu` parameter is already present in grub"
+  shell: cat /etc/default/grub | grep -qe "^GRUB_CMDLINE_LINUX.*=.*_iommu=on.*"
+  register: is_intel_iommu_or_amd_iommu_present_in_grub
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when:
+    - is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+    - is_iommu_enabled.rc != 0 or is_iommu_remapping_enabled.rc != 0 or is_iommu_pt_enabled != 0
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Check if `iommu=pt` parameter is already present in grub"
+  shell: cat /etc/default/grub | grep -qe "^GRUB_CMDLINE_LINUX.*=.*[ \"]iommu=pt[ \"].*"
+  register: is_iommu_pt_present_in_grub
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when:
+    - is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+    - is_iommu_enabled.rc != 0 or is_iommu_remapping_enabled.rc != 0 or is_iommu_pt_enabled != 0
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Check if whether it' an Intel processor or an AMD processor"
+  shell: lscpu | grep "^Vendor ID:"
+  register: lscpu_output
+  changed_when: false
+  when:
+    - is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+    - is_iommu_enabled.rc != 0 or is_iommu_remapping_enabled.rc != 0 or is_iommu_pt_enabled != 0
+    - is_intel_iommu_or_amd_iommu_present_in_grub.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Set vendor variable based on lscpu output"
+  set_fact:
+    cpu_vendor: >-
+      {{ 
+        ("intel" if lscpu_output.stdout.find("GenuineIntel") != -1 else 
+        ("amd" if lscpu_output.stdout.find("AuthenticAMD") != -1 else "Unknown")).strip() 
+      }}
+  when:
+    - is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+    - is_iommu_enabled.rc != 0 or is_iommu_remapping_enabled.rc != 0 or is_iommu_pt_enabled != 0
+    - is_intel_iommu_or_amd_iommu_present_in_grub.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Fail if unknown CPU vendor, cannot enable IOMMU"
+  fail:
+    msg: "Unknown CPU vendor, cannot enable IOMMU."
+  when:
+    - is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+    - is_iommu_enabled.rc != 0 or is_iommu_remapping_enabled.rc != 0 or is_iommu_pt_enabled != 0
+    - is_intel_iommu_or_amd_iommu_present_in_grub.rc != 0 and cpu_vendor == "Unknown"
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Set `is_condition_iommu` based on conditions"
+  set_fact:
+    is_condition_iommu: true
+  when:
+    - is_intel_iommu_or_amd_iommu_and_iommu_pt_present_in_loaded_grub.rc != 0
+    - is_iommu_enabled.rc != 0 or is_iommu_remapping_enabled.rc != 0 or is_iommu_pt_enabled.rc != 0

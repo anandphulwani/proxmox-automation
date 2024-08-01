@@ -1,0 +1,69 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`IOMMU`"
+    is_grub_cmdline_linux_default_parameter_present_in_grub: null
+    is_grub_updated: null
+    is_initramfs_updated: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current `/proc/cmdline`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/proc/ && cp /proc/cmdline /root/proxmox_automation_install/backups/proc/cmdline_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current `/etc/default/grub`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/default/ && cp /etc/default/grub /root/proxmox_automation_install/backups/etc/default/grub_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if `GRUB_CMDLINE_LINUX_DEFAULT` parameter exists in `/etc/default/grub`"
+  shell: cat /etc/default/grub | grep -qe "^GRUB_CMDLINE_LINUX_DEFAULT\s*="
+  register: is_grub_cmdline_linux_default_parameter_present_in_grub
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Fail if `GRUB_CMDLINE_LINUX_DEFAULT` is not found in `/etc/default/grub`"
+  fail:
+    msg: "GRUB_CMDLINE_LINUX_DEFAULT is not found in `/etc/default/grub`"
+  when: is_grub_cmdline_linux_default_parameter_present_in_grub.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Add `intel_iommu=on` or `amd_iommu=on` to the end of the line in `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`"
+  replace:
+    path: /etc/default/grub
+    regexp: '(^GRUB_CMDLINE_LINUX_DEFAULT=")([^"]*)(")'
+    replace: '\1\2 {{ cpu_vendor }}_iommu=on\3'
+  when: is_intel_iommu_or_amd_iommu_present_in_grub.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Add `iommu=pt` to the end of the line in `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`"
+  replace:
+    path: /etc/default/grub
+    regexp: '(^GRUB_CMDLINE_LINUX_DEFAULT=")([^"]*)(")'
+    replace: '\1\2 iommu=pt\3'
+  when: is_iommu_pt_present_in_grub.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Remove spaces between the equalsto,quote and the first parameter in `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub`"
+  replace:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT="\s+'
+    replace: 'GRUB_CMDLINE_LINUX_DEFAULT="'
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Update grub"
+  command: update-grub
+  register: is_grub_updated
+  when: is_condition_post_completion_tasks_and_cleanup is not defined
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Update initramfs"
+  command: update-initramfs -u -k all
+  register: is_initramfs_updated
+  when: is_condition_post_completion_tasks_and_cleanup is not defined
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Reboot the server"
+  reboot:
+    msg: "Reboot initiated for changing the `IOMMU` setting"
+    reboot_timeout: 600
+  when: is_condition_post_completion_tasks_and_cleanup is not defined and (is_grub_updated.changed or is_initramfs_updated.changed)
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Set `is_condition_post_completion_tasks_and_cleanup` to true if `is_condition_post_completion_tasks_and_cleanup` is defined"
+  set_fact:
+    is_condition_post_completion_tasks_and_cleanup: true
+  when: is_condition_post_completion_tasks_and_cleanup is defined

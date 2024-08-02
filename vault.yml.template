@@ -7,3 +7,4 @@ hostname: "<<hostname>>"
 webgui_port_old: <<webgui_port_old>> # Usual value: 8006
 webgui_port_new: <<webgui_port_new>> # any port between 1024-49151 not used by any other application, safe to use port about 10000
 email_from: "<<email_from>>"
+email_to: "<<email_to>>"

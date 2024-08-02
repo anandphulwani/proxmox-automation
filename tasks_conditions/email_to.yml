@@ -1,0 +1,49 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Email To`"
+    userCfg_file_exists: null
+    userCfg_user_exists: null
+    userCfg_email_already_exists: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `email_to` is defined and not empty"
+  fail:
+    msg: "The variable 'email_to' is not defined or is empty."
+  when: email_to is not defined or email_to == '' or email_to is none
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `email_to` matches the regex pattern"
+  fail:
+    msg: "The variable 'email_to' value: '{{ email_to }}' is not a valid value."
+  when: not email_to | regex_search("^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$")
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if /etc/pve/user.cfg exists"
+  stat:
+    path: /etc/pve/user.cfg
+  register: userCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Slurp the contents of `/etc/pve/user.cfg`"
+  slurp:
+    src: /etc/pve/user.cfg
+  register: etcPveUserCfg_slurped_file
+  changed_when: false
+  when: userCfg_file_exists.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Parse the file content to `etcPveUserCfg_content` variable"
+  set_fact:
+    etcPveUserCfg_content: "{{ etcPveUserCfg_slurped_file['content'] | b64decode }}"
+  when: userCfg_file_exists.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Check if various modules exists in the `etcPveUserCfg_content`"
+  set_fact:
+    # Check if user exists and email doesn't exist in user.cfg
+    userCfg_user_exists: "{{ etcPveUserCfg_content | regex_search('^user:root@pam:1:0', multiline=True) is not none }}"
+    # Check if specific email already exists in user.cfg
+    userCfg_email_already_exists: "{{ etcPveUserCfg_content | regex_search('^user:root@pam:1:0:::' ~ email_to ~ ':::', multiline=True) is not none }}"    
+  changed_when: false
+  when: userCfg_file_exists.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Set `is_condition_email_to` based on conditions"
+  set_fact:
+    is_condition_email_to: true
+  when: not userCfg_file_exists.stat.exists or not userCfg_user_exists or not userCfg_email_already_exists

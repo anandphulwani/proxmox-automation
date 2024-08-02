@@ -1,0 +1,40 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Email To`"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current `/etc/pve/user.cfg`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/pve/ && cp /etc/pve/user.cfg /root/proxmox_automation_install/backups/etc/pve/user.cfg_$(date +%Y%m%d-%H%M%S)
+  when: userCfg_file_exists.stat.exists
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Create `/etc/pve/user.cfg` if it does not exist"
+  file:
+    path: /etc/pve/user.cfg
+    state: touch
+    owner: root
+    group: www-data
+    mode: '0640'
+  when: not userCfg_file_exists.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Populate `/etc/pve/user.cfg` with specified contents if it does not exist"
+  shell: echo 'user:root@pam:1:0:::{{ email_to }}:::\n\n\n\n' > /etc/pve/user.cfg
+  when: not userCfg_file_exists.stat.exists
+  become: yes
+  become_user: root
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Replace email if user exists and email doesn't exist in user.cfg"
+  lineinfile:
+    path: /etc/pve/user.cfg
+    regexp: '^user:root@pam:1:0:::.*'
+    line: "user:root@pam:1:0:::{{ email_to }}:::"
+    state: present
+  when: userCfg_file_exists.stat.exists and userCfg_user_exists
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Add email if user doesn't exists and email doesn't exist in user.cfg"
+  lineinfile:
+    path: /etc/pve/user.cfg
+    line: "user:root@pam:1:0:::{{ email_to }}:::\n\n\n\n"
+    insertafter: EOF
+  when: userCfg_file_exists.stat.exists and not userCfg_user_exists

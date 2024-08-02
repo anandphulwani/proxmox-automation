@@ -1,0 +1,55 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Email From`"
+    etcPveDatacenterCfg_file_exists: null
+    etcPveDatacenterCfg_slurped_file: null
+    etcPveDatacenterCfg_content: null
+    datacenterCfg_email_from_already_exists: null
+    datacenterCfg_email_from_tag_exists: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `email_from` is defined and not empty"
+  fail:
+    msg: "The variable 'email_from' is not defined or is empty."
+  when: email_from is not defined or email_from == '' or email_from is none
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `email_from` matches the regex pattern"
+  fail:
+    msg: "The variable 'email_from' value: '{{ email_from }}' is not a valid value."
+  when: not email_from | regex_search("^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$")
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if `/etc/pve/datacenter.cfg` exists"
+  stat:
+    path: /etc/pve/datacenter.cfg
+  register: etcPveDatacenterCfg_file_exists
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Convert `etcPveDatacenterCfg_file_exists` to a boolean value"
+  set_fact:
+    etcPveDatacenterCfg_file_exists: "{{ etcPveDatacenterCfg_file_exists['stat']['exists'] | bool }}"
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Slurp the contents of `/etc/pve/datacenter.cfg`"
+  slurp:
+    src: /etc/pve/datacenter.cfg
+  register: etcPveDatacenterCfg_slurped_file
+  changed_when: false
+  when: etcPveDatacenterCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Parse the file content to `etcPveDatacenterCfg_content` variable"
+  set_fact:
+    etcPveDatacenterCfg_content: "{{ etcPveDatacenterCfg_slurped_file['content'] | b64decode }}"
+  when: etcPveDatacenterCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Check if various modules exists in the `etcPveDatacenterCfg_content`"
+  set_fact:
+    # Check if specific email_from already exists in datacenter.cfg
+    datacenterCfg_email_from_already_exists: "{{ etcPveDatacenterCfg_content | regex_search('^email_from:\\s*' ~ email_from ~ '\\s*$', multiline=True) is not none }}"
+    # Check if any email_from tag exists in datacenter.cfg
+    datacenterCfg_email_from_tag_exists: "{{ etcPveDatacenterCfg_content | regex_search('^email_from: ', multiline=True) is not none }}"
+  when: etcPveDatacenterCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Set `is_condition_email_from` based on conditions"
+  set_fact:
+    is_condition_email_from: true
+  when: (not etcPveDatacenterCfg_file_exists) or (not datacenterCfg_email_from_already_exists)

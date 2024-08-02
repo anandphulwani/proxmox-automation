@@ -1,0 +1,30 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Email From`"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Touch `/etc/pve/datacenter.cfg`"
+  file:
+    path: /etc/pve/datacenter.cfg
+    state: touch
+  when: not etcPveDatacenterCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current `/etc/pve/datacenter.cfg`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/pve/ && cp /etc/pve/datacenter.cfg /root/proxmox_automation_install/backups/etc/pve/datacenter.cfg_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Replace email_from if it exists"
+  lineinfile:
+    path: /etc/pve/datacenter.cfg
+    regexp: '^email_from: .*'
+    line: 'email_from: {{ email_from }}'
+    state: present
+  when: datacenterCfg_email_from_tag_exists
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Add email_from if it does not exist"
+  lineinfile:
+    path: /etc/pve/datacenter.cfg
+    line: 'email_from: {{ email_from }}'
+    insertafter: EOF
+  when: not datacenterCfg_email_from_tag_exists

@@ -22,7 +22,8 @@
 #     17. IOMMU
 #     18. IOMMU modules
 #     19. VirtIO.iso
-#     20. Post Completion Tasks and Cleanup (TASK only)
+#     20. Email From
+#     21. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -46,6 +47,7 @@
     is_condition_iommu: false
     is_condition_iommu_modules: false
     is_condition_virtio_iso: false
+    is_condition_email_from: false
     is_condition_post_completion_tasks_and_cleanup: false
 
   vars_files:
@@ -243,6 +245,17 @@
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `VirtIO.iso`, Caller block"
       include_tasks: tasks/virtio_iso.yml
       when: is_condition_virtio_iso
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `Email From`
+    - name: ""
+      import_tasks: tasks_conditions/email_from.yml
+
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Email From`, Caller block"
+      include_tasks: tasks/email_from.yml
+      when: is_condition_email_from
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

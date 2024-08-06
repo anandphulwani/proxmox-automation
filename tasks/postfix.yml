@@ -1,0 +1,127 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Postfix`"
+    postmap_hashCalc_saslPasswd_result: null
+    sasl_passwddb_generated: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current `/etc/postfix/main.cf`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/postfix/ && cp /etc/postfix/main.cf /root/proxmox_automation_install/backups/etc/postfix/main.cf_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current `/etc/postfix/sasl_passwd`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/postfix/ && cp /etc/postfix/sasl_passwd /root/proxmox_automation_install/backups/etc/postfix/sasl_passwd_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Backup current `/etc/postfix/sasl_passwd.db`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/postfix/ && cp /etc/postfix/sasl_passwd.db /root/proxmox_automation_install/backups/etc/postfix/sasl_passwd.db_$(date +%Y%m%d-%H%M%S)
+  when: sasl_passwddb_stat.stat.exists
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Backup current `/etc/postfix/smtp_header_checks`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/postfix/ && cp /etc/postfix/smtp_header_checks /root/proxmox_automation_install/backups/etc/postfix/smtp_header_checks_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+# 01-Section: `/etc/postfix/main.cf`
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Replace default variables values if not already commented in `/etc/postfix/main.cf` which are collected above"
+  replace:
+    path: "/etc/postfix/main.cf"
+    regexp: "{{ item.regexp }}"
+    replace: "{{ item.line }}"
+  with_items: "{{ default_variables_values_not_yet_commented }}"
+  when: default_variables_values_not_yet_commented | length > 0
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Replace or add missing variables in `/etc/postfix/main.cf`"
+  lineinfile:
+    path: "/etc/postfix/main.cf"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }} # Added by `postfix.yml`"
+    state: present
+    insertafter: EOF
+  with_items: "{{ missing_variables_values }}"
+  when: missing_variables_values | length > 0
+  loop_control:
+    label: "{{ item.variable }}"
+
+# 02-Section: `/etc/postfix/sasl_passwd.db`
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Create or modify `/etc/postfix/sasl_passwd` with SMTP credentials"
+  lineinfile:
+    path: /etc/postfix/sasl_passwd
+    line: "{{ sasl_passwd_line }}"
+    create: yes
+    owner: root
+    group: root
+    mode: '0600'
+  when: not sasl_passwddb_file_ok
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Remove older `/etc/postfix/sasl_passwd.db` hash file"
+  file:
+    path: /etc/postfix/sasl_passwd.db
+    state: absent
+  when: not sasl_passwddb_file_ok
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Run postmap on `/etc/postfix/sasl_passwd`"
+  command: postmap hash:/etc/postfix/sasl_passwd
+  register: postmap_hashCalc_saslPasswd_result
+  failed_when: postmap_hashCalc_saslPasswd_result.rc != 0
+  when: not sasl_passwddb_file_ok
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Check if file `/etc/postfix/sasl_passwd.db` is generated"
+  stat:
+    path: "/etc/postfix/sasl_passwd.db"
+  register: sasl_passwddb_generated
+  when: (not sasl_passwddb_file_ok) and postmap_hashCalc_saslPasswd_result.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Create a file with the SHA1 checksum as its name if it doesn't exist"
+  file:
+    path: "/root/proxmox_automation_install/task_postfix-sasl_passwd_{{ sasl_passwd_line_checksum.stdout }}"
+    state: touch
+  when: ((not sasl_passwddb_file_ok) and postmap_hashCalc_saslPasswd_result.rc == 0) and sasl_passwddb_generated.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Remove plain-text `/etc/postfix/sasl_passwd` file"
+  file:
+    path: /etc/postfix/sasl_passwd
+    state: absent
+  when: ((not sasl_passwddb_file_ok) and postmap_hashCalc_saslPasswd_result.rc == 0) and sasl_passwddb_generated.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Execute `border_message.py` Python script on localhost to display the message"
+  shell: |
+    python3 includes/border_message.py "Although `/etc/postfix/sasl_passwd.db` file is generated
+      using `postmap hash:/etc/postfix/sasl_passwd` command, the password is easily accessible
+      by catting the file, as it doesn't use a good masking/encrypting algorithm, it seems
+      there is no workaround for this as of now in postfix, 
+      Please take care of this factor and use wisely." {{ terminal_width }}
+  register: message_output
+  delegate_to: localhost
+  changed_when: false
+  run_once: true
+  when: not sasl_passwddb_file_ok
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Show the above message"
+  delegate_to: localhost
+  pause:
+    prompt: "{{ message_output.stdout }}\nPress a key to continue"
+  run_once: true
+  when: not sasl_passwddb_file_ok
+
+# 03-Section: `/etc/postfix/smtp_header_checks`
+# /^From:.*/ REPLACE From: xyz-alert <abcde@something.com>
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Create or modify `/etc/postfix/smtp_header_checks` with new content"
+  copy:
+    dest: /etc/postfix/smtp_header_checks
+    content: "/^From:.*/ REPLACE From: {{ current_hostname }} <{{ email_from }}>\n"
+    owner: root
+    group: root
+    mode: '0600'
+  when: not smtp_header_checks_file_ok
+
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Reload Postfix service"
+  service:
+    name: postfix
+    state: reloaded
+
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Touching run file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_postfix_* && sleep 2 && touch /root/proxmox_automation_install/task_postfix_$(date +%Y%m%d-%H%M%S).run.tmp"
+  ignore_errors: true
+  changed_when: false

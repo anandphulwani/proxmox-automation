@@ -1,0 +1,207 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Postfix`"
+    latest_datetime_task: null
+    recent_file_of_all_files_being_changed: null
+    is_any_file_being_changed_after_run_file: null
+    is_run_file_older_than_any_file_being_changed: false
+    etc_postfix_main_cf_file_slurp: null 
+    default_variables_values_to_be_commented: []
+    default_variables_values_not_yet_commented: []
+    variables_values: null
+    missing_variables_values: []
+    sasl_passwd_line_checksum: null
+    sasl_passwddb_stat: null
+    sasl_passwd_hashfile_stat: null
+    remove_sasl_passwddb_checksumfiles: null
+    sasl_passwddb_file_ok: false
+    smtp_header_checks_exists: null
+    smtp_header_checks_file_ok: false
+  changed_when: false
+
+# email_from_password
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `email_from_password` is defined and not empty"
+  fail:
+    msg: "The variable 'email_from_password' is not defined or is empty."
+  when: email_from_password is not defined or email_from_password == '' or email_from_password is none
+
+# email_from_sv
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `email_from_sv` is defined and not empty"
+  fail:
+    msg: "The variable 'email_from_sv' is not defined or is empty."
+  when: email_from_sv is not defined or email_from_sv == '' or email_from_sv is none
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if `email_from_sv` matches the regex pattern"
+  fail:
+    msg: "The variable 'email_from_sv' value: '{{ email_from_sv }}' is not a valid value."
+  when: not email_from_sv | regex_search("^((([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)\.)+[a-zA-Z]{2,}|localhost|(\d{1,3}\.){3}\d{1,3})$")
+
+# email_from_port
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if `email_from_port` is defined and not empty"
+  fail:
+    msg: "The variable 'email_from_port' is not defined or is empty."
+  when: email_from_port is not defined or email_from_port == '' or email_from_port is none
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if `email_from_port` matches the regex pattern"
+  fail:
+    msg: "The variable 'email_from_port' value: '{{ email_from_port }}' is not a valid value."
+  when: not email_from_port | regex_search("^\d{2,5}$")
+
+# sasl_passwd_line
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Check if `sasl_passwd_line` is defined and not empty"
+  fail:
+    msg: "The variable 'sasl_passwd_line' is not defined or is empty."
+  when: sasl_passwd_line is not defined or sasl_passwd_line == '' or sasl_passwd_line is none
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Check if `sasl_passwd_line` matches the regex pattern"
+  fail:
+    msg: "The variable 'sasl_passwd_line' value: '{{ sasl_passwd_line }}' is not a valid value."
+  when: not sasl_passwd_line | regex_search("^\[(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}|localhost|(\d{1,3}\.){3}\d{1,3})\]:\d{2,5} [a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}:.+$")
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Get the latest run file if exits"
+  shell: ls -1r /root/proxmox_automation_install/task_postfix_*.run.tmp | head -n 1 | grep -oP "[^_]_\K[0-9]{8}-[0-9]{6}"
+  register: latest_datetime_task
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Check if all the files being changed already exist"
+  shell: "ls -1r /etc/postfix/main.cf /etc/postfix/sasl_passwd.db /etc/postfix/smtp_header_checks | head -n 1"
+  register: recent_file_of_all_files_being_changed
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Check if latest run file is not older than any files being changed's modification time"
+  shell: "[ $(date -d \"$(echo \"{{ latest_datetime_task.stdout }}\" | sed -E 's/([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})/\\1-\\2-\\3 \\4:\\5:\\6/')\" +%s) -ge $(stat -c %Y \"{{ recent_file_of_all_files_being_changed.stdout }}\") ]"
+  register: is_any_file_being_changed_after_run_file
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: 
+    - not (latest_datetime_task.stderr_lines is defined and latest_datetime_task.stderr_lines | length > 0)
+    - not (recent_file_of_all_files_being_changed.stderr_lines is defined and recent_file_of_all_files_being_changed.stderr_lines | length > 0)
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Set `is_run_file_older_than_any_file_being_changed` based on conditions"
+  set_fact:
+    is_run_file_older_than_any_file_being_changed: true
+  when: (is_any_file_being_changed_after_run_file.skipped is defined and is_any_file_being_changed_after_run_file.skipped)
+        or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
+
+# 01-Section: `/etc/postfix/main.cf`
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Read the contents of `/etc/postfix/main.cf` file"
+  slurp:
+    path: /etc/postfix/main.cf
+  register: etc_postfix_main_cf_file_slurp
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Define postfix default variables and values to be commented in `/etc/postfix/main.cf` file"
+  set_fact:
+    default_variables_values_to_be_commented:
+      - { 
+        variable: "# mydestination", regexp: "^(\\s*mydestination\\s*=.*)(?!.*# Added by `postfix.yml`)", line: "# \\1", 
+        when: "{{ (etc_postfix_main_cf_file_slurp.content | b64decode).split('\n') | select('search', '^\\s*mydestination\\s*=(?!.*# Added by `postfix.yml`)') | list | length == 1 }}"
+        }
+      - {
+        variable: "# smtp_tls_security_level", regexp: "^(\\s*smtp_tls_security_level\\s*=.*)(?!.*# Added by postfix.yml)", line: "# \\1", 
+        when: "{{ (etc_postfix_main_cf_file_slurp.content | b64decode).split('\n') | select('search', '^\\s*smtp_tls_security_level\\s*=(?!.*# Added by `postfix.yml`)') | list | length == 1 }}"
+        }
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Collect default variables values are not commented in `/etc/postfix/main.cf`"
+  set_fact:
+    default_variables_values_not_yet_commented: "{{ default_variables_values_not_yet_commented | default([]) + [item] }}"
+  loop: "{{ default_variables_values_to_be_commented }}"
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - item.when is defined and item.when | bool
+  loop_control:
+    label: "{{ item.variable }}"
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Define postfix variables and their respective values in `/etc/postfix/main.cf` file"
+  set_fact:
+    variables_values:
+      - { variable: "relayhost", regexp: "^relayhost\\s+=.*$", line: "relayhost = [{{ email_from_sv }}]:{{ email_from_port }}" }
+      - { variable: "smtp_use_tls", regexp: "^smtp_use_tls\\s+=.*$", line: "smtp_use_tls = yes" }
+      - { variable: "smtp_sasl_auth_enable", regexp: "^smtp_sasl_auth_enable\\s+=.*$", line: "smtp_sasl_auth_enable = yes" }
+      - { variable: "smtp_sasl_password_maps", regexp: "^smtp_sasl_password_maps\\s+=.*$", line: "smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd" }
+      - { variable: "smtp_tls_CAfile", regexp: "^smtp_tls_CAfile\\s+=.*$", line: "smtp_tls_CAfile = /etc/ssl/certs/Entrust_Root_Certification_Authority.pem" }
+      - { variable: "smtp_tls_session_cache_database", regexp: "^smtp_tls_session_cache_database\\s+=.*$", line: "smtp_tls_session_cache_database = btree:/var/lib/postfix/smtp_tls_session_cache" }
+      - { variable: "smtp_tls_session_cache_timeout", regexp: "^smtp_tls_session_cache_timeout\\s+=.*$", line: "smtp_tls_session_cache_timeout = 3600s" }
+      - { variable: "smtp_tls_security_options", regexp: "^smtp_tls_security_options\\s+=.*$", line: "smtp_tls_security_options = noanonymous" }
+      - { variable: "smtp_tls_mandatory_ciphers", regexp: "^smtp_tls_mandatory_ciphers\\s+=.*$", line: "smtp_tls_mandatory_ciphers = high" }
+      - { variable: "smtp_tls_secure_cert_match", regexp: "^smtp_tls_secure_cert_match\\s+=.*$", line: "smtp_tls_secure_cert_match = nexthop, dot-nexthop" }
+      - { variable: "smtp_tls_security_level", regexp: "^smtp_tls_security_level\\s+=.*$", line: "smtp_tls_security_level = secure"}
+      - { variable: "smtp_header_checks", regexp: "^smtp_header_checks\\s+=.*$", line: "smtp_header_checks = pcre:/etc/postfix/smtp_header_checks"}
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Verify all lines in one go"
+  set_fact:
+    missing_variables_values: "{{ missing_variables_values | default([]) + [item] }}"
+  with_items: "{{ variables_values }}"
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - not (etc_postfix_main_cf_file_slurp.content | b64decode | string) is search(item.line | string | regex_escape)
+  loop_control:
+    label: "{{ item.variable | default('') }}"
+
+# 02-Section: `/etc/postfix/sasl_passwd.db`
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Generate SHA1 checksum of the `/etc/postfix/sasl_passwd` line"
+  shell: echo -n "{{ sasl_passwd_line }}" | sha1sum | awk '{print $1}'
+  register: sasl_passwd_line_checksum
+  changed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Check if file `/etc/postfix/sasl_passwd.db` is present"
+  stat:
+    path: "/etc/postfix/sasl_passwd.db"
+  register: sasl_passwddb_stat
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Check if file `/etc/postfix/sasl_passwd` hash file already computed and exists"
+  stat:
+    path: "/root/proxmox_automation_install/task_postfix-sasl_passwd_{{ sasl_passwd_line_checksum.stdout }}"
+  register: sasl_passwd_hashfile_stat
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Remove all files that start with `/root/proxmox_automation_install/task_postfix-sasl_passwd_`"
+  shell: "find /etc/postfix/ -regextype posix-egrep -regex '.*/sasl_passwd_.{40}' -type f |
+    { if {{ sasl_passwddb_stat.stat.exists | bool | lower }}; then grep -v \"/root/proxmox_automation_install/task_postfix-sasl_passwd_{{ sasl_passwd_line_checksum.stdout }}\"; else cat; fi; } |
+    xargs -I {} sh -c 'rm -f \"{}\" && echo \"Removed: {}\"' | wc -l"
+  register: remove_sasl_passwddb_checksumfiles
+  ignore_errors: yes
+  failed_when: false
+  changed_when: remove_sasl_passwddb_checksumfiles.stdout != "0"
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Set `sasl_passwddb_file_ok` based on conditions"
+  set_fact:
+    sasl_passwddb_file_ok: true
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - sasl_passwddb_stat.stat.exists and sasl_passwd_hashfile_stat.stat.exists
+
+# 03-Section: `/etc/postfix/smtp_header_checks`
+- name: "{{ file_sno_type_prefix }} 022: {{ section_name }}, Check if specific `/etc/postfix/smtp_header_checks` content exists"
+  command: "grep -qEo -e \"^/\\^From:\\.\\*/ REPLACE From: {{ current_hostname }} <{{ email_from }}>$\" /etc/postfix/smtp_header_checks"
+  register: smtp_header_checks_exists
+  ignore_errors: yes
+  failed_when: false
+  changed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 023: {{ section_name }}, Set `smtp_header_checks_file_ok` based on conditions"
+  set_fact:
+    smtp_header_checks_file_ok: true
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - smtp_header_checks_exists.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 024: {{ section_name }}, Set `is_condition_postfix` based on conditions"
+  set_fact:
+    is_condition_postfix: true
+  when: 
+      - is_run_file_older_than_any_file_being_changed
+      - default_variables_values_not_yet_commented | length > 0 or missing_variables_values | length > 0 or
+        (not sasl_passwddb_file_ok) or (not smtp_header_checks_file_ok)

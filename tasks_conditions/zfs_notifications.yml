@@ -1,0 +1,19 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`ZFS Notifications`"
+    zed_email_addr_line_exists: null
+  changed_when: false
+
+# Check for ZFS notification enabled
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `/etc/zfs/zed.d/zed.rc` contains valid value"
+  shell: "grep -q '^ZED_EMAIL_ADDR\\s*=\\s*\"root\"$' /etc/zfs/zed.d/zed.rc"
+  register: zed_email_addr_line_exists
+  ignore_errors: yes
+  failed_when: false
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Set `is_condition_zfs_notifications` based on conditions"
+  set_fact:
+    is_condition_zfs_notifications: true
+  when: zed_email_addr_line_exists.rc != 0

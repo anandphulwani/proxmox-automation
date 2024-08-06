@@ -8,3 +8,7 @@ webgui_port_old: <<webgui_port_old>> # Usual value: 8006
 webgui_port_new: <<webgui_port_new>> # any port between 1024-49151 not used by any other application, safe to use port about 10000
 email_from: "<<email_from>>"
 email_to: "<<email_to>>"
+email_from_password: "<<email_from_password>>"
+email_from_sv: "<<email_from_sv>>" # For gmail use `smtp.gmail.com`
+email_from_port: <<email_from_port>> # For gmail use: 587
+sasl_passwd_line: "[{{ email_from_sv }}]:{{ email_from_port }} {{ email_from }}:{{ email_from_password }}"

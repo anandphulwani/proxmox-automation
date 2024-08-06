@@ -26,7 +26,7 @@ def event_handler(event):
         print(event['stdout'])
     elif event['event'] in ['runner_on_ok', 'runner_item_on_ok']:
         task_name = event['event_data']['task']
-        if not re.match(r'^\d{2}-Task_Condition:', task_name):
+        if not re.match(r'^\d{2}-Task_Condition:', task_name) and not re.match(r'^Variable initialization: \d{3},', task_name):
             print(playbook_on_task_start) if playbook_on_task_start is not None else None
             print(event['stdout'])
     else: # 'runner_on_start',

@@ -12,3 +12,9 @@ email_from_password: "<<email_from_password>>"
 email_from_sv: "<<email_from_sv>>" # For gmail use `smtp.gmail.com`
 email_from_port: <<email_from_port>> # For gmail use: 587
 sasl_passwd_line: "[{{ email_from_sv }}]:{{ email_from_port }} {{ email_from }}:{{ email_from_password }}"
+cloudflare_email_address: "<<cloudflare_email_address>>"
+cloudflare_zone_id: "<<cloudflare_zone_id>>"
+cloudflare_account_id: "<<cloudflare_account_id>>"
+cloudflare_api_token: "<<cloudflare_api_token>>"
+subdomain_name_of_server: "<<subdomain_name_of_server>>"
+public_ip_of_server: "<<public_ip_of_server>>"

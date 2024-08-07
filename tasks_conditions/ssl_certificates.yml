@@ -1,0 +1,292 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`SSL Certificates`"
+    required_packages:
+      - expect
+    package_check_results: null
+    missing_packages: []
+    is_le_staging_exists: null
+    is_le_staging_directory_exists: null
+    is_le_staging_removed: null
+    should_le_staging_be_created: null
+    is_le_production_exists: null
+    is_le_production_directory_exists: null
+    is_le_production_removed: null
+    should_le_production_be_created: null
+    is_cloudflare_plugin_already_exists: null
+    is_cloudflare_plugin_config_exists: null
+    is_cloudflare_plugin_removed: null
+    should_cloudflare_plugin_be_created: null
+    pveproxy_ssl_pem_exists: null
+    is_certificate_present: null
+    ssl_cert_not_before: null
+    ssl_cert_not_after: null
+    ssl_cert_not_before_iso: null
+    ssl_cert_not_after_iso: null
+    is_cert_valid: null
+    should_certificate_be_created: null
+    domain_name_resolution_response: null
+    is_domain_name_mapped_to_any_ip: null
+    is_domain_name_mapped_to_server_ip_addr: null
+    should_domain_name_A_record_be_created: null
+  changed_when: false
+
+# cloudflare_email_address
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `cloudflare_email_address` is defined and not empty"
+  fail:
+    msg: "The variable 'cloudflare_email_address' is not defined or is empty."
+  when: cloudflare_email_address is not defined or cloudflare_email_address == '' or cloudflare_email_address is none
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `cloudflare_email_address` matches the regex pattern"
+  fail:
+    msg: "The variable 'cloudflare_email_address' value: '{{ cloudflare_email_address }}' is not a valid value."
+  when: not cloudflare_email_address | regex_search("^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$")
+
+# cloudflare_zone_id
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check if `cloudflare_zone_id` is defined and not empty"
+  fail:
+    msg: "The variable 'cloudflare_zone_id' is not defined or is empty."
+  when: cloudflare_zone_id is not defined or cloudflare_zone_id == '' or cloudflare_zone_id is none
+
+# cloudflare_account_id
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if `cloudflare_account_id` is defined and not empty"
+  fail:
+    msg: "The variable 'cloudflare_account_id' is not defined or is empty."
+  when: cloudflare_account_id is not defined or cloudflare_account_id == '' or cloudflare_account_id is none
+
+# cloudflare_api_token
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if `cloudflare_api_token` is defined and not empty"
+  fail:
+    msg: "The variable 'cloudflare_api_token' is not defined or is empty."
+  when: cloudflare_api_token is not defined or cloudflare_api_token == '' or cloudflare_api_token is none
+
+# subdomain_name_of_server
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Check if `subdomain_name_of_server` is defined and not empty"
+  fail:
+    msg: "The variable 'subdomain_name_of_server' is not defined or is empty."
+  when: subdomain_name_of_server is not defined or subdomain_name_of_server == '' or subdomain_name_of_server is none
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Check if `subdomain_name_of_server` matches the regex pattern"
+  fail:
+    msg: "The variable 'subdomain_name_of_server' value: '{{ subdomain_name_of_server }}' is not a valid value."
+  when: not subdomain_name_of_server | regex_search("^((([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)\.)+[a-zA-Z]{2,})$")
+
+# public_ip_of_server
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Check if `public_ip_of_server` is defined and not empty"
+  fail:
+    msg: "The variable 'public_ip_of_server' is not defined or is empty."
+  when: public_ip_of_server is not defined or public_ip_of_server == '' or public_ip_of_server is none
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Check if `public_ip_of_server` matches the regex pattern"
+  fail:
+    msg: "The variable 'public_ip_of_server' value: '{{ public_ip_of_server }}' is not a valid value."
+  when: not public_ip_of_server | regex_search("^((\d{1,3}\.){3}\d{1,3})$")
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Filter out already installed packages"
+  set_fact:
+    required_packages: "{{ required_packages | difference(already_installed_packages) }}"
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Check if required packages are installed"
+  command: "dpkg-query -W -f='${Package} ${Status}\n' {{ required_packages | join(' ') }}"
+  register: package_check_results
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Collect missing packages from stdout"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.0] }}"
+  loop: "{{ package_check_results.stdout_lines | map('split', ' ') | map('list') | list }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "item[1] != 'install' or item[2] != 'ok' or item[3] != 'installed'"
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Collect missing packages from stderr"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.split(' ')[-1]] }}"
+  loop: "{{ package_check_results.stderr_lines }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "'no packages found matching' in item"
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Add already installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + (required_packages | difference(missing_packages))) | unique }}"
+  when: required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Install missing required packages"
+  apt:
+    name: "{{ missing_packages }}"
+    state: present
+  when: missing_packages is defined and missing_packages | length > 0
+
+# For when the `missing_packages` are installed
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Add new installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + missing_packages) | unique }}"
+  when: missing_packages is defined and missing_packages | length > 0
+
+# Let's Encrypt Staging account
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Check Let's Encrypt Staging account already exists"
+  shell: pvenode acme account list | grep -qe "^le-staging$"
+  register: is_le_staging_exists
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Check Let's Encrypt Staging account points to right directory"
+  shell: pvenode acme account info le-staging | grep -Poe "^\│ directory \│ https://acme-staging-v02.api.letsencrypt.org/directory\s*\│$"
+  register: is_le_staging_directory_exists
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_le_staging_exists.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Remove Let's Encrypt Staging account if points to wrong directory"
+  shell:  pvenode acme account deactivate le-staging
+  register: is_le_staging_removed
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_le_staging_exists.rc == 0 and is_le_staging_directory_exists.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Fail if Let's Encrypt Staging account deletion if points to wrong directory was not successful"
+  fail:
+    msg: "Failed to delete Let's Encrypt Staging account if points to wrong directory"
+  when: is_le_staging_exists.rc == 0 and is_le_staging_directory_exists.rc != 0 and is_le_staging_removed.rc !=0
+
+- name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Should Let's Encrypt Staging account be created"
+  set_fact:
+    should_le_staging_be_created: "{{ is_le_staging_exists.rc != 0 or (is_le_staging_directory_exists.rc != 0 and is_le_staging_removed.rc == 0 ) }}"
+
+# Let's Encrypt Production account
+- name: "{{ file_sno_type_prefix }} 022: {{ section_name }}, Check Let's Encrypt Production account already exists"
+  shell: pvenode acme account list | grep -qe "^le-v2$"
+  register: is_le_production_exists
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 023: {{ section_name }}, Check Let's Encrypt Production account points to right directory"
+  shell: pvenode acme account info le-v2 | grep -Poe "^\│ directory \│ https://acme-v02.api.letsencrypt.org/directory\s*\│$"
+  register: is_le_production_directory_exists
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_le_production_exists.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 024: {{ section_name }}, Remove Let's Encrypt Production account if points to wrong directory"
+  shell:  pvenode acme account deactivate le-v2
+  register: is_le_production_removed
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_le_production_exists.rc == 0 and is_le_production_directory_exists.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 025: {{ section_name }}, Fail if Let's Encrypt Production account deletion if points to wrong directory was not successful"
+  fail:
+    msg: "Failed to delete Let's Encrypt Production account if points to wrong directory"
+  when: is_le_production_exists.rc == 0 and is_le_production_directory_exists.rc != 0 and is_le_production_removed.rc !=0
+
+- name: "{{ file_sno_type_prefix }} 026: {{ section_name }}, Should Let's Encrypt Production account be created"
+  set_fact:
+    should_le_production_be_created: "{{ is_le_production_exists.rc != 0 or (is_le_production_directory_exists.rc != 0 and is_le_production_removed.rc == 0 ) }}"
+
+# Cloudflare ACME DNS plugin
+- name: "{{ file_sno_type_prefix }} 027: {{ section_name }}, Check Cloudflare ACME DNS plugin already exists"
+  shell: pvenode acme plugin list | grep -qe "^│\s*cloudflare\s*│$"
+  register: is_cloudflare_plugin_already_exists
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 028: {{ section_name }}, Check Cloudflare ACME DNS plugin points to right values"
+  shell: pvenode acme plugin config cloudflare | grep -qPzo '(?s).*api\s+│\s+cf.*data\s+│\s+CF_Account_ID={{ cloudflare_account_id }}[│\s]+CF_Token={{ cloudflare_api_token }}.*type\s+│\s+dns.*'
+  register: is_cloudflare_plugin_config_exists
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_cloudflare_plugin_already_exists.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 029: {{ section_name }}, Remove Cloudflare ACME DNS plugin if points to wrong values"
+  shell: pvenode acme plugin remove cloudflare
+  register: is_cloudflare_plugin_removed
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_cloudflare_plugin_already_exists.rc == 0 and is_cloudflare_plugin_config_exists.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 030: {{ section_name }}, Fail if Cloudflare ACME DNS plugin removal if points to wrong values was not successful"
+  fail:
+    msg: "Failed to delete Cloudflare ACME DNS plugin if points to wrong values"
+  when: is_cloudflare_plugin_already_exists.rc == 0 and is_cloudflare_plugin_config_exists.rc != 0 and is_cloudflare_plugin_removed.rc !=0
+
+- name: "{{ file_sno_type_prefix }} 031: {{ section_name }}, Should Cloudflare ACME DNS plugin be created"
+  set_fact:
+    should_cloudflare_plugin_be_created: "{{ is_cloudflare_plugin_already_exists.rc != 0 or (is_cloudflare_plugin_config_exists.rc != 0 and is_cloudflare_plugin_removed.rc == 0 ) }}"
+
+# SSL Certificates
+- name: "{{ file_sno_type_prefix }} 032: {{ section_name }}, Check if the `pveproxy-ssl.pem` file exists"
+  stat:
+    path: /etc/pve/nodes/{{ current_hostname }}/pveproxy-ssl.pem
+  register: pveproxy_ssl_pem_exists
+
+- name: "{{ file_sno_type_prefix }} 033: {{ section_name }}, Get whether a valid certificate is present or not"
+  shell: "openssl x509 -in /etc/pve/nodes/{{ current_hostname }}/pveproxy-ssl.pem -text -noout | grep -Poz -e \"(?<=\\n)[ ]*Issuer: .*O = Let's Encrypt,.*\\n[ ]*Validity(.*\\n){3}[ ]*Subject: CN = {{ subdomain_name_of_server }}\\n\""
+  register: is_certificate_present
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: pveproxy_ssl_pem_exists.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 034: {{ section_name }}, Extract `Not Before` date from current certificate"
+  set_fact:
+    ssl_cert_not_before: "{{ (is_certificate_present.stdout | regex_search('Not Before\\s*:\\s*(.*)\\n', '\\1'))[0] }}"
+  when: pveproxy_ssl_pem_exists.stat.exists and is_certificate_present.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 035: {{ section_name }}, Extract `Not After` date from current certificate"
+  set_fact:
+    ssl_cert_not_after: "{{ (is_certificate_present.stdout | regex_search('Not After\\s*:\\s*(.*)\\n', '\\1'))[0] }}"
+  when: pveproxy_ssl_pem_exists.stat.exists and is_certificate_present.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 036: {{ section_name }}, Convert `Not Before` and `Not After` to ISO format"
+  set_fact:
+    ssl_cert_not_before_iso: "{{ (ssl_cert_not_before | to_datetime('%b %d %H:%M:%S %Y %Z')).isoformat() }}"
+    ssl_cert_not_after_iso: "{{ (ssl_cert_not_after | to_datetime('%b %d %H:%M:%S %Y %Z')).isoformat() }}"
+  when: pveproxy_ssl_pem_exists.stat.exists and is_certificate_present.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 037: {{ section_name }}, Check if current date is within the certificate validity period"
+  set_fact:
+    is_cert_valid: "{{ (ansible_date_time.iso8601 >= ssl_cert_not_before_iso) and (ansible_date_time.iso8601 <= ssl_cert_not_after_iso) }}"
+  when: pveproxy_ssl_pem_exists.stat.exists and is_certificate_present.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 038: {{ section_name }}, Should SSL certificate be created"
+  set_fact:
+    should_certificate_be_created: "{{ (not pveproxy_ssl_pem_exists.stat.exists) or (is_certificate_present.rc != 0) or (not is_cert_valid) }}"
+
+# Check if `subdomain_name_of_server` points to `public_ip_of_server`, otherwise create A record in DNS records of the domain
+- name: "{{ file_sno_type_prefix }} 039: {{ section_name }}, Check if domain name exists in A records"
+  shell: host {{ subdomain_name_of_server }} 1.1.1.1
+  register: domain_name_resolution_response
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 040: {{ section_name }}, Check if domain name is mapped to public IP address"
+  set_fact:
+    is_domain_name_mapped_to_server_ip_addr: "{{ ((domain_name_resolution_response.stdout | regex_search('has address (\\d+\\.\\d+\\.\\d+\\.\\d+)', '\\1')) | first) == public_ip_of_server }}"
+  changed_when: false
+  failed_when: false
+  when: domain_name_resolution_response.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 041: {{ section_name }}, Should SSL certificate be created"
+  set_fact:
+    should_domain_name_A_record_be_created: "{{ ( domain_name_resolution_response.rc != 0 ) or ( not is_domain_name_mapped_to_server_ip_addr ) }}"
+
+- name: "{{ file_sno_type_prefix }} 042: {{ section_name }}, Set `is_condition_ssl_certificates` based on conditions"
+  set_fact:
+    is_condition_ssl_certificates: true
+  when: should_le_staging_be_created or should_le_production_be_created or should_cloudflare_plugin_be_created or
+        should_certificate_be_created or should_domain_name_A_record_be_created

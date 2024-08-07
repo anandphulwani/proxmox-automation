@@ -26,7 +26,8 @@
 #     21. Email To
 #     22. Postfix
 #     23. ZFS Notifications
-#     24. Post Completion Tasks and Cleanup (TASK only)
+#     24. SSL Certificates
+#     25. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -54,6 +55,7 @@
     is_condition_email_to: false
     is_condition_postfix: false
     is_condition_zfs_notifications: false
+    is_condition_ssl_certificates: false
     is_condition_post_completion_tasks_and_cleanup: false
 
   vars_files:
@@ -295,6 +297,17 @@
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `ZFS Notifications`, Caller block"
       include_tasks: tasks/zfs_notifications.yml
       when: is_condition_zfs_notifications
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `SSL Certificates`
+    - name: ""
+      import_tasks: tasks_conditions/ssl_certificates.yml
+
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `SSL Certificates`, Caller block"
+      include_tasks: tasks/ssl_certificates.yml
+      when: is_condition_ssl_certificates
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

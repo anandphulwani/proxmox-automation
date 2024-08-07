@@ -7,6 +7,7 @@
       - curl
       - git
       - ntpdate
+      - expect
     package_check_results: null
     missing_packages: []
   changed_when: false

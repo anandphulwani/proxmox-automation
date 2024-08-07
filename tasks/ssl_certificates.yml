@@ -1,0 +1,191 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`SSL Certificates`"
+    create_le_staging_result: null
+    create_le_production_result: null
+    add_cloudflare_plugin_result: null
+    is_cloudflare_plugin_exists: null
+    acme_account_le_staging_set: null
+    acme_domain_and_plugin_set: null
+    is_account_staging_and_domain_exists: null
+    create_staging_certificate_result: null
+    acme_account_le_v2_set: null
+    is_account_v2_and_domain_exists: null
+    create_v2_certificate_result: null
+    domain_name_dns_records_result: null
+    domain_name_record_id: null
+    delete_dns_record_result: null
+    add_domain_name_dns_record_result: null
+  changed_when: false
+
+# Let's Encrypt Staging account
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Create Let's Encrypt Staging account"
+  shell: |
+    expect -c 'set timeout 90; spawn pvenode acme account register le-staging temporary@temporary.com \
+      --directory https://acme-staging-v02.api.letsencrypt.org/directory; \
+      expect -timeout 120 {Do you agree to the above terms? \[y|N\]:}; send "y\r"; expect eof'
+  register: create_le_staging_result
+  when: should_le_staging_be_created
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Fail if Staging account creation was not successful"
+  fail:
+    msg: "Failed to create Let's Encrypt Staging account"
+  when: should_le_staging_be_created and 'Task OK' not in create_le_staging_result.stdout
+
+# Let's Encrypt Production account
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Create Let's Encrypt Production account"
+  shell: |
+    expect -c 'set timeout 90; spawn pvenode acme account register le-v2 temporary@temporary.com \
+      --directory https://acme-v02.api.letsencrypt.org/directory; \
+      expect -timeout 120 {Do you agree to the above terms? \[y|N\]:}; send "y\r"; expect eof'
+  register: create_le_production_result
+  when: should_le_production_be_created
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Fail if Production account creation was not successful"
+  fail:
+    msg: "Failed to create Let's Encrypt Production account"
+  when: should_le_production_be_created and 'Task OK' not in create_le_production_result.stdout
+
+# Cloudflare ACME DNS plugin
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Add Cloudflare ACME DNS plugin"
+  shell: tmp=$(mktemp) && \
+    echo "CF_Account_ID={{ cloudflare_account_id }}\nCF_Token={{ cloudflare_api_token }}" > "$tmp" && \
+    pvenode acme plugin add dns cloudflare --api cf --data "$tmp" && \
+    rm "$tmp"
+  register: add_cloudflare_plugin_result
+  when: should_cloudflare_plugin_be_created
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Check Cloudflare ACME DNS plugin added"
+  shell: pvenode acme plugin list | grep -qe "^│\s*cloudflare\s*│$"
+  register: is_cloudflare_plugin_exists
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: should_cloudflare_plugin_be_created
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Fail if Cloudflare ACME DNS plugin Addition was not successful"
+  fail:
+    msg: "Failed to add Cloudflare ACME DNS Plugin"
+  when: should_cloudflare_plugin_be_created and is_cloudflare_plugin_exists.rc != 0
+
+# SSL Certificates
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Select ACME account `le-staging` for the node"
+  shell: pvenode config set --acme account=le-staging
+  register: acme_account_le_staging_set
+  failed_when: acme_account_le_staging_set.rc != 0
+  changed_when: false
+  when: should_certificate_be_created
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Add Domain for ACME DNS challenge and select `cloudflare` as the plugin"
+  shell: pvenode config set --acmedomain0 domain="{{ subdomain_name_of_server }},plugin=cloudflare"
+  register: acme_domain_and_plugin_set
+  failed_when: acme_domain_and_plugin_set.rc != 0
+  changed_when: false
+  when: should_certificate_be_created
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Check ACME account `le-staging` and domain for ACME DNS challenge is set"
+  shell: "pvenode config get | grep -qPoz -e \"acme: account=le-staging\\nacmedomain0: domain={{ subdomain_name_of_server }},plugin=cloudflare\""
+  register: is_account_staging_and_domain_exists
+  failed_when: is_account_staging_and_domain_exists.rc != 0
+  changed_when: false
+  when: should_certificate_be_created
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Order `Staging` SSL cert for the domain"
+  shell: pvenode acme cert order --force
+  register: create_staging_certificate_result
+  ignore_errors: yes
+  failed_when: false
+  when: should_certificate_be_created
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Fail if `Staging` SSL certification creation was not successful"
+  fail:
+    msg: "Failed to create `Staging` SSL certification: {{ create_staging_certificate_result }}"
+  when: should_certificate_be_created and 'Task OK' not in create_staging_certificate_result.stdout
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Select ACME account `le-v2` for the node"
+  shell: pvenode config set --acme account=le-v2
+  register: acme_account_le_v2_set
+  failed_when: acme_account_le_v2_set.rc != 0
+  changed_when: false
+  when: should_certificate_be_created
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Add Domain for ACME DNS challenge and select `cloudflare` as the plugin"
+  shell: pvenode config set --acmedomain0 domain="{{ subdomain_name_of_server }},plugin=cloudflare"
+  register: acme_domain_and_plugin_set
+  failed_when: acme_domain_and_plugin_set.rc != 0
+  changed_when: false
+  when: should_certificate_be_created
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check ACME account `le-v2` and domain for ACME DNS challenge is set"
+  shell: "pvenode config get | grep -qPoz -e \"acme: account=le-v2\\nacmedomain0: domain={{ subdomain_name_of_server }},plugin=cloudflare\""
+  register: is_account_v2_and_domain_exists
+  failed_when: is_account_v2_and_domain_exists.rc != 0
+  changed_when: false
+  when: should_certificate_be_created
+
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Order `Production` SSL cert for the domain"
+  shell: pvenode acme cert order --force
+  register: create_v2_certificate_result
+  ignore_errors: yes
+  failed_when: false
+  when: should_certificate_be_created
+
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Fail if `Production` SSL certification creation was not successful"
+  fail:
+    msg: "Failed to create `Production` SSL certification"
+  when: should_certificate_be_created and 'Task OK' not in create_v2_certificate_result.stdout
+
+# Check if `subdomain_name_of_server` points to `public_ip_of_server`, otherwise create A record in DNS records of the domain
+- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Retrieve DNS records for the zone"
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    return_content: yes
+  register: domain_name_dns_records_result
+  failed_when: not domain_name_dns_records_result.json.success
+  when: should_domain_name_A_record_be_created and ( is_domain_name_mapped_to_any_ip and not is_domain_name_mapped_to_server_ip_addr )
+
+- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Set the `domain_name_record_id` for the specific DNS record"
+  set_fact:
+    domain_name_record_id: "{{ (domain_name_dns_records_result.json.result | selectattr('name', 'equalto', subdomain_name_of_server) | list).0.id }}"
+  failed_when: domain_name_record_id is not defined
+  when: should_domain_name_A_record_be_created and ( is_domain_name_mapped_to_any_ip and not is_domain_name_mapped_to_server_ip_addr)
+
+- name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Delete DNS A record for the subdomain"
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records/{{ domain_name_record_id }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    return_content: yes
+  register: delete_dns_record_result
+  failed_when: not delete_dns_record_result.json.success
+  changed_when: delete_dns_record_result.json.success
+  when: should_domain_name_A_record_be_created and ( is_domain_name_mapped_to_any_ip and not is_domain_name_mapped_to_server_ip_addr )
+
+- name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Add DNS A record for the subdomain"
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body: >
+      {
+        "type": "A",
+        "name": "{{ subdomain_name_of_server }}",
+        "content": "{{ public_ip_of_server }}",
+        "ttl": 120,
+        "proxied": false
+      }
+    body_format: json
+    return_content: yes
+  register: add_domain_name_dns_record_result
+  failed_when: not add_domain_name_dns_record_result.json.success
+  changed_when: add_domain_name_dns_record_result.json.success
+  when: should_domain_name_A_record_be_created and (( not is_domain_name_mapped_to_any_ip ) or not is_domain_name_mapped_to_server_ip_addr )

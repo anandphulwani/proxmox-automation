@@ -8,6 +8,9 @@
       - git
       - ntpdate
       - expect
+      - curl
+      - lsof
+      - fail2ban # https://pve.proxmox.com/wiki/Fail2ban
     package_check_results: null
     missing_packages: []
   changed_when: false

@@ -1,0 +1,322 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Fail2ban`"
+    required_packages:
+      - curl
+      - lsof
+      - fail2ban # https://pve.proxmox.com/wiki/Fail2ban
+    package_check_results: null
+    missing_packages: []
+    accessControlpm_line_not_patched: null
+    webgui_port_current: null
+    fail2ban_filters_and_actions: null
+    fail2ban_filters_and_actions_sha1: null
+    action_and_filter_filenames_with_newlines: null
+    action_and_filter_filenames_list: null
+    files_being_changed: null
+    latest_datetime_task: null
+    recent_file_of_all_files_being_changed: null
+    is_any_file_being_changed_changed_after_run_file: null
+    is_run_file_older_than_any_file_being_changed: false
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Filter out already installed packages"
+  set_fact:
+    required_packages: "{{ required_packages | difference(already_installed_packages) }}"
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if required packages are installed"
+  command: "dpkg-query -W -f='${Package} ${Status}\n' {{ required_packages | join(' ') }}"
+  register: package_check_results
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Collect missing packages from stdout"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.0] }}"
+  loop: "{{ package_check_results.stdout_lines | map('split', ' ') | map('list') | list }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "item[1] != 'install' or item[2] != 'ok' or item[3] != 'installed'"
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Collect missing packages from stderr"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.split(' ')[-1]] }}"
+  loop: "{{ package_check_results.stderr_lines }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "'no packages found matching' in item"
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Add already installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + (required_packages | difference(missing_packages))) | unique }}"
+  when: required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Install missing required packages"
+  apt:
+    name: "{{ missing_packages }}"
+    state: present
+  when: missing_packages is defined and missing_packages | length > 0
+
+# For when the `missing_packages` are installed
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Add new installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + missing_packages) | unique }}"
+  when: missing_packages is defined and missing_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Check if the specified line exists in `AccessControl.pm` to log the ip address is not patched"
+  shell: "grep -q \"\\s*PVE::Cluster::log_msg(.*successful auth for user '\\$username'\\\");\" /usr/share/perl5/PVE/API2/AccessControl.pm"
+  register: accessControlpm_line_not_patched
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Set `is_condition_fail2ban` based on conditions"
+  set_fact:
+    is_condition_fail2ban: true
+  when:
+    - not is_condition_fail2ban
+    - accessControlpm_line_not_patched.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Get current webgui port"
+  shell: "lsof -i -P -n | grep pveproxy | head -n 1 | awk '{split($9, a, \":\"); print a[2]}'"
+  register: webgui_port_current
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Check if `webgui_port_current` is a numeric value"
+  fail:
+    msg: "The `webgui_port_current` is not a numeric value: {{ webgui_port_current.stdout }}"
+  when: not webgui_port_current.stdout is regex('^[0-9]+$')
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Define Fail2ban filter and action contents"
+  set_fact:
+    fail2ban_filters_and_actions:
+      # Fail2ban WebGUI successful authentication
+      # Jul 08 11:06:11 harlax-ovh01 pvedaemon[4118907]: <root@pam> successful auth for user 'root@pam' from ::ffff:27.58.190.100
+      - variable: "WebGUI_successful_authentication"
+        filter_filename: "/etc/fail2ban/filter.d/notify-ntfy-on-successful-webgui-auth-filter.conf"
+        filter_filecontent: |
+          [Definition]
+          failregex = pvedaemon\[.*successful auth for user '.*' from <HOST>
+          ignoreregex =
+          journalmatch = _SYSTEMD_UNIT=pvedaemon.service
+        action_filename: "/etc/fail2ban/action.d/notify-ntfy-on-successful-webgui-auth-action.conf"
+        action_filecontent: |
+          [Definition]
+          actionban = curl -d "{{ current_hostname }}: Proxmox WebGUI successful logged in using IP: <ip>" http://ntfy.sh/harlax_authorized_authentication_alerts
+        jail_local_content: |
+          [webgui-success]
+          enabled = true
+          port = https,http,{{ webgui_port_current.stdout }}
+          backend = systemd
+          filter = notify-ntfy-on-successful-webgui-auth-filter
+          action = notify-ntfy-on-successful-webgui-auth-action
+          maxretry = 1
+          findtime = 1
+          bantime = 1
+        jail_local_marker: "{mark} ANSIBLE MANAGED BLOCK: webgui-success"
+      # Fail2ban WebGUI failed authentication
+      # Jul 08 11:06:11 harlax-ovh01 pvedaemon[2189]: authentication failure; rhost=::ffff:103.59.75.55 user=root@pam msg=Authentication failure
+      - variable: "WebGUI_failed_authentication"
+        filter_filename: "/etc/fail2ban/filter.d/notify-ntfy-on-failed-and-banned-webgui-auth-filter.conf"
+        filter_filecontent: |
+          [Definition]
+          failregex = pvedaemon\[.* authentication failure; rhost=<HOST> user=.* msg=.*
+          ignoreregex =
+          journalmatch = _SYSTEMD_UNIT=pvedaemon.service
+        action_filename: "/etc/fail2ban/action.d/notify-ntfy-on-failed-webgui-auth-action.conf"
+        action_filecontent: |
+          [Definition]
+          actionban = curl -d "{{ current_hostname }}: Proxmox WebGUI failed login attempt using IP: <ip>" http://ntfy.sh/harlax_failed_authentication_alerts
+        jail_local_content: |
+          [webgui-fail]
+          enabled = true
+          port = https,http,{{ webgui_port_current.stdout }}
+          backend = systemd
+          filter = notify-ntfy-on-failed-and-banned-webgui-auth-filter
+          action = notify-ntfy-on-failed-webgui-auth-action
+          maxretry = 1
+          findtime = 1
+          bantime = 1
+        jail_local_marker: "{mark} ANSIBLE MANAGED BLOCK: webgui-fail"
+      # Fail2ban WebGUI banned
+      # Jul 08 11:06:11 harlax-ovh01 pvedaemon[2189]: authentication failure; rhost=::ffff:103.59.75.55 user=root@pam msg=Authentication failure
+      - variable: "WebGUI_banned_authentication"
+        filter_filename: null # as filter is used commonly with `WebGUI_failed_authentication`
+        filter_filecontent: null # as filter is used commonly with `WebGUI_failed_authentication`
+        action_filename: "/etc/fail2ban/action.d/notify-ntfy-on-banned-webgui-auth-action.conf"
+        action_filecontent: |
+          [Definition]
+          actionban = curl -d "{{ current_hostname }}: Proxmox WebGUI banned IP: <ip>" http://ntfy.sh/harlax_banned_authentication_alerts
+        jail_local_content: |
+          [webgui-banned]
+          enabled = true
+          port = https,http,{{ webgui_port_current.stdout }}
+          backend = systemd
+          filter = notify-ntfy-on-failed-and-banned-webgui-auth-filter
+          action = %(action_)s
+                    notify-ntfy-on-banned-webgui-auth-action
+          maxretry = 3
+          findtime = 2d
+          bantime = 30d
+        jail_local_marker: "{mark} ANSIBLE MANAGED BLOCK: webgui-banned"
+      # Fail2ban SSH successful authentication
+      # Jul 10 08:55:21 harlax-ovh01 sshd[887654]: Accepted password for root from 103.59.75.55 port 21382 ssh2
+      - variable: "SSH_successful_authentication"
+        filter_filename: "/etc/fail2ban/filter.d/notify-ntfy-on-successful-sshd-auth-filter.conf"
+        filter_filecontent: |
+          [Definition]
+          failregex = sshd\[.*Accepted password for .* from <HOST> .*
+          ignoreregex =
+          journalmatch = _SYSTEMD_UNIT=ssh.service
+        action_filename: "/etc/fail2ban/action.d/notify-ntfy-on-successful-sshd-auth-action.conf"
+        action_filecontent: |
+          [Definition]
+          actionban = curl -d "{{ current_hostname }}: Proxmox SSH/Terminal successful logged in using IP: <ip>" http://ntfy.sh/harlax_authorized_authentication_alerts
+        jail_local_content: |
+          [sshd-success]
+          enabled = true
+          port    = ssh
+          logpath = %(sshd_log)s
+          backend = %(sshd_backend)s
+          filter = notify-ntfy-on-successful-sshd-auth-filter
+          action = notify-ntfy-on-successful-sshd-auth-action
+          maxretry = 1
+          findtime = 1
+          bantime = 1
+        jail_local_marker: "{mark} ANSIBLE MANAGED BLOCK: sshd-success"
+      # Fail2ban SSH failed authentication
+      # Jul 10 09:29:36 harlax-ovh01 sshd[894393]: Failed password for root from 103.59.75.55 port 10003 ssh2
+      - variable: "SSH_failed_authentication"
+        filter_filename: "/etc/fail2ban/filter.d/notify-ntfy-on-failed-and-banned-sshd-auth-filter.conf"
+        filter_filecontent: |
+          [Definition]
+          failregex = sshd\[.*Failed password for .* from <HOST> .*
+          ignoreregex =
+          journalmatch = _SYSTEMD_UNIT=ssh.service
+        action_filename: "/etc/fail2ban/action.d/notify-ntfy-on-failed-sshd-auth-action.conf"
+        action_filecontent: |
+          [Definition]
+          actionban = curl -d "{{ current_hostname }}: Proxmox SSH/Terminal failed login attempt using IP: <ip>" http://ntfy.sh/harlax_failed_authentication_alerts
+        jail_local_content: |
+          [sshd-fail]
+          enabled = true
+          port    = ssh
+          logpath = %(sshd_log)s
+          backend = %(sshd_backend)s
+          filter = notify-ntfy-on-failed-and-banned-sshd-auth-filter
+          action = notify-ntfy-on-failed-sshd-auth-action
+          maxretry = 1
+          findtime = 1
+          bantime = 1
+        jail_local_marker: "{mark} ANSIBLE MANAGED BLOCK: sshd-fail"
+      # Fail2ban SSHD banned authentication
+      # Jul 10 09:29:36 harlax-ovh01 sshd[894393]: Failed password for root from 103.59.75.55 port 10003 ssh2
+      - variable: "SSH_banned_authentication"
+        filter_filename: null # as filter is used commonly with `SSH_failed_authentication`
+        filter_filecontent: null # as filter is used commonly with `SSH_failed_authentication`
+        action_filename: "/etc/fail2ban/action.d/notify-ntfy-on-banned-sshd-auth-action.conf"
+        action_filecontent: |
+          [Definition]
+          actionban = curl -d "{{ current_hostname }}: Proxmox SSH/Terminal banned IP: <ip>" http://ntfy.sh/harlax_banned_authentication_alerts
+        jail_local_check_if_present_regex: "^\\[sshd\\]$"
+        jail_local_search_to_repace_regex: "{{ 
+                                    '(^\\[sshd\\]$(?:\\n)(?:[ \\t\\n]*(?:^[\\t ]*#[^\\n]*\\n?|^[ \\t]*\\n?)*)*)' + 
+                                    '([\\s\\S]*?)' + 
+                                    '(^[\\s\\t\\n]*)(?=(?:^\\[[^\\n]*\\]$|\\Z))' 
+                                  }}"
+        jail_local_content: '\1{begin-mark}enabled = true\naction = %(action_)s\n         notify-ntfy-on-banned-sshd-auth-action\nmaxretry = 3\nfindtime = 2d\nbantime = 30d\n{end-mark}\2\3'
+        jail_local_marker: "{mark} ANSIBLE MANAGED BLOCK: Added [sshd] enabled to True\n"
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Generate `fail2ban_filters_and_actions` SHA1 checksum"
+  set_fact:
+    fail2ban_filters_and_actions_sha1: "{{ fail2ban_filters_and_actions | to_json | hash('sha1') }}"
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Gather filenames from `fail2ban_filters_and_actions`"
+  set_fact:
+    action_and_filter_filenames_with_newlines: >-
+      {{
+        fail2ban_filters_and_actions
+        | selectattr('filter_filename', 'defined') 
+        | selectattr('filter_filename', '!=', None) 
+        | map(attribute='filter_filename')
+        | union(fail2ban_filters_and_actions 
+        | selectattr('action_filename', 'defined') 
+        | selectattr('action_filename', '!=', None) 
+        | map(attribute='action_filename'))
+        | join('\n')
+      }}
+  when: 
+    - not is_condition_fail2ban 
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Split `action_and_filter_filenames_with_newlines` into a list"
+  set_fact:
+    action_and_filter_filenames_list: "{{ action_and_filter_filenames_with_newlines.split('\\n') | select('string') | list }}"
+  when: 
+    - not is_condition_fail2ban 
+
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Join `action_and_filter_filenames_list` by space"
+  set_fact:
+    files_being_changed: "/etc/fail2ban/jail.local {{ action_and_filter_filenames_list | join(' ') }}"
+  when: 
+    - not is_condition_fail2ban 
+
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Check if all the files being changed already exist"
+  shell: "ls -1r {{ files_being_changed }} | head -n 1"
+  register: recent_file_of_all_files_being_changed
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: 
+    - not is_condition_fail2ban
+
+- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Set `is_condition_fail2ban` based on conditions"
+  set_fact:
+    is_condition_fail2ban: true
+  when: 
+    - not is_condition_fail2ban
+    - recent_file_of_all_files_being_changed is skipped
+      or (recent_file_of_all_files_being_changed.stderr_lines is defined and recent_file_of_all_files_being_changed.stderr_lines | length > 0)
+
+- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Get the latest run file if exits"
+  shell: ls -1r /root/proxmox_automation_install/task_fail2ban_*_{{ fail2ban_filters_and_actions_sha1 }}.checksum.tmp | head -n 1 | grep -oP "[^_]_\K[0-9]{8}-[0-9]{6}"
+  register: latest_datetime_task
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: 
+    - not is_condition_fail2ban
+
+- name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Set `is_condition_fail2ban` based on conditions"
+  set_fact:
+    is_condition_fail2ban: true
+  when: 
+    - not is_condition_fail2ban
+    - latest_datetime_task.stderr_lines is defined and latest_datetime_task.stderr_lines | length > 0
+    
+
+- name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Check if latest run file is not older than any files being changed's modification time"
+  shell: "[ $(date -d \"$(echo \"{{ latest_datetime_task.stdout }}\" | sed -E 's/([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})/\\1-\\2-\\3 \\4:\\5:\\6/')\" +%s) -ge $(stat -c %Y \"{{ recent_file_of_all_files_being_changed.stdout }}\") ]"
+  register: is_any_file_being_changed_changed_after_run_file
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: 
+    - not is_condition_fail2ban
+
+- name: "{{ file_sno_type_prefix }} 022: {{ section_name }}, Set `is_run_file_older_than_any_file_being_changed` based on conditions"
+  set_fact:
+    is_run_file_older_than_any_file_being_changed: true
+  when: 
+    - not is_condition_fail2ban
+    - is_any_file_being_changed_changed_after_run_file.rc is defined and is_any_file_being_changed_changed_after_run_file.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 023: {{ section_name }}, Set `is_condition_fail2ban` based on conditions"
+  set_fact:
+    is_condition_fail2ban: true
+  when:
+    - not is_condition_fail2ban
+    - is_run_file_older_than_any_file_being_changed

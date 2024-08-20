@@ -1,0 +1,142 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Fail2ban`"
+    regex_check_results: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current `/usr/share/perl5/PVE/API2/AccessControl.pm`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/usr/share/perl5/PVE/API2/ && cp /usr/share/perl5/PVE/API2/AccessControl.pm /root/proxmox_automation_install/backups/usr/share/perl5/PVE/API2/AccessControl.pm_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current `/etc/fail2ban/jail.local`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/fail2ban/ && cp /etc/fail2ban/jail.local /root/proxmox_automation_install/backups/etc/fail2ban/jail.local_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Backup current `filter_filename` files"
+  shell: mkdir -p /root/proxmox_automation_install/backups{{ item.filter_filename | regex_replace('/[^/]+$', '') }} && cp {{ item.filter_filename }} /root/proxmox_automation_install/backups{{ item.filter_filename }}_$(date +%Y%m%d-%H%M%S)
+  when: item.filter_filename is not none and item.filter_filecontent is not none
+  with_items: "{{ fail2ban_filters_and_actions }}"
+  loop_control:
+    label: "{{ item.variable }}"
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Backup current `action_filename` files"
+  shell: mkdir -p /root/proxmox_automation_install/backups{{ item.action_filename | regex_replace('/[^/]+$', '') }} && cp {{ item.action_filename }} /root/proxmox_automation_install/backups{{ item.action_filename }}_$(date +%Y%m%d-%H%M%S)
+  when: item.action_filename is not none and item.action_filecontent is not none
+  with_items: "{{ fail2ban_filters_and_actions }}"
+  loop_control:
+    label: "{{ item.variable }}"
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Replace the line to patch, if it exists and is unpatched in `AccessControl.pm` to log the ip address"
+  replace:
+    path: /usr/share/perl5/PVE/API2/AccessControl.pm
+    regexp: '^(\s*)(PVE::Cluster::log_msg\(.*successful auth for user .*)"\);'
+    replace: '\1my $clientip = $rpcenv->get_client_ip() || '''';\1\2 from $clientip");'
+  when: accessControlpm_line_not_patched.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Ensure `/etc/fail2ban/jail.local` is copied from `/etc/fail2ban/jail.conf`"
+  copy:
+    src: /etc/fail2ban/jail.conf
+    dest: /etc/fail2ban/jail.local
+    remote_src: yes
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Jail.Local change `[DEFAULT] backend` from `auto` to `systemd`"
+  replace:
+    path: /etc/fail2ban/jail.local
+    regexp: '(^\\[DEFAULT\\]$([\\s\\S]*?))^\\s*backend\\s*=\\s*auto\\s*$'
+    replace: '\1backend = systemd'
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Create NTFY alerts on item's authentication, Regex definition"
+  copy:
+    dest: "{{ item.filter_filename }}"
+    content: "{{ item.filter_filecontent }}"
+  when: item.filter_filename is not none and item.filter_filecontent is not none
+  with_items: "{{ fail2ban_filters_and_actions }}"
+  loop_control:
+    label: "{{ item.variable }}"
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Create NTFY alerts on item's authentication, Action definition"
+  copy:
+    dest: "{{ item.action_filename }}"
+    content: "{{ item.action_filecontent }}"
+  when: item.action_filename is not none and item.action_filecontent is not none
+  with_items: "{{ fail2ban_filters_and_actions }}"
+  loop_control:
+    label: "{{ item.variable }}"
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Create NTFY alerts on item's authentication (without regex)"
+  blockinfile:
+    path: /etc/fail2ban/jail.local
+    block: "{{ item.jail_local_content }}"
+    marker: "{{ item.jail_local_marker }}"
+    marker_begin: '\n# BEGIN' 
+    marker_end: '# END'
+    insertafter: EOF
+  when: item.jail_local_search_to_repace_regex is not defined
+  with_items: "{{ fail2ban_filters_and_actions }}"
+  loop_control:
+    label: "{{ item.variable }}"
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Check if required regex is present in the `jail.local` file"
+  shell: "grep -q '{{ item.jail_local_check_if_present_regex }}' /etc/fail2ban/jail.local"
+  register: regex_check_results
+  ignore_errors: true
+  changed_when: false
+  failed_when: false
+  when: item.jail_local_check_if_present_regex is defined
+  with_items: "{{ fail2ban_filters_and_actions }}"
+  loop_control:
+    label: "{{ item.variable }}"
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Fail if required regex is not found in the `jail.local` file"
+  debug:
+    msg: "Regex `{{ item.item.jail_local_check_if_present_regex }}` for the item `{{ item.item.variable }}` not found in /etc/fail2ban/jail.local"
+  failed_when: 
+    - item.rc != 0
+  when:
+    - item.item.jail_local_check_if_present_regex is defined
+    - item is not skipped
+    - item.rc != 0
+  loop_control:
+    label: "{{ item.item.variable }}"
+  with_items: "{{ regex_check_results.results }}"
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Create NTFY alerts on item's authentication (with regex)"
+  replace:
+    path: /etc/fail2ban/jail.local
+    regexp: "{{ item.jail_local_search_to_repace_regex }}"
+    replace: "{{ item.jail_local_content | replace('{begin-mark}', (item.jail_local_marker | replace('{mark}', '# BEGIN'))) | replace('{end-mark}', (item.jail_local_marker | replace('{mark}', '# END'))) }}"
+  when: item.jail_local_search_to_repace_regex is defined
+  with_items: "{{ fail2ban_filters_and_actions }}"
+  loop_control:
+    label: "{{ item.variable }}"
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Unban all clients if present"
+  shell: |
+    for jail in $(sudo fail2ban-client status | grep "Jail list" | cut -d':' -f2 | tr ',' ' '); do
+        for ip in $(sudo fail2ban-client status $jail | grep "IP list" | cut -d':' -f2 | tr ' ' '\n'); do
+            sudo fail2ban-client set $jail unbanip $ip
+        done
+    done
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check status of all the fail2ban jails"
+  shell: |
+    for jail in $(sudo fail2ban-client status | grep "Jail list" | cut -d':' -f2 | tr ',' ' '); do
+        echo "Jail: $jail"
+        sudo fail2ban-client status $jail
+        echo ""
+    done
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Replace port ssh with port `ssh_port_new` in Fail2ban configuration"
+  replace:
+    path: /etc/fail2ban/jail.local
+    regexp: '^port(\s*)=(\s*)ssh$'
+    replace: 'port\g<1>=\g<2>{{ ssh_port_new }}'
+
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Touching checksum file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_fail2ban_* && sleep 2 && touch /root/proxmox_automation_install/task_fail2ban_$(date +%Y%m%d-%H%M%S)_{{ fail2ban_filters_and_actions_sha1 }}.checksum.tmp"
+  changed_when: false

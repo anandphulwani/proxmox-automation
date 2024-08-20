@@ -1,0 +1,36 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Prerequisites`"
+    ping_to_check_internet: null
+    internet_connected: null
+    resolve_google: null
+    resolve_microsoft: null
+    resolve_facebook: null
+    resolve_apple: null
+    dns_working: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check internet connectivity by pinging 1.1.1.1, 8.8.8.8, 8.8.4.4"
+  shell: ping -c 1 -W 1 1.1.1.1 || ping -c 1 -W 1 8.8.8.8 || ping -c 1 -W 1 8.8.4.4
+  register: ping_to_check_internet
+  ignore_errors: true
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Fail if no ping was successful"
+  fail:
+    msg: "Internet connectivity check failed. No ping responses."
+  when: ping_to_check_internet.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Check DNS resolution by resolving google.com, microsoft.com, facebook.com, apple.com"
+  shell: nslookup google.com || nslookup microsoft.com || nslookup facebook.com || nslookup apple.com
+  register: nslookup_to_check_dns
+  ignore_errors: true
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Fail if no DNS resolution was successful"
+  fail:
+    msg: "DNS resolution check failed. No domain could be resolved."
+  when: nslookup_to_check_dns.rc != 0

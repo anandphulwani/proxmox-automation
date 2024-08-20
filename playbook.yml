@@ -5,7 +5,8 @@
 #
 #     01. Pre gathering facts-Get and Set common variables (PRE_TASK)
 #     02. Virtualization and VT-d enabled (PRE_TASK)
-#     03. Post Completion Tasks and Cleanup (TASK only)
+#     03. Prerequisites (TASK_CONDITION only)
+#     04. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -37,6 +38,13 @@
     # `Gathering facts manually`
     - name: Gather facts manually
       setup:
+
+    # `Prerequisites`
+    - name: ""
+      import_tasks: tasks_conditions/prerequisites.yml
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
 
     # `Post Completion Tasks and Cleanup`
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Post Completion Tasks and Cleanup`, Caller block"

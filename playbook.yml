@@ -1,0 +1,6 @@
+---
+- name: Proxmox initial setup
+  hosts: all
+  vars:
+
+  tasks:

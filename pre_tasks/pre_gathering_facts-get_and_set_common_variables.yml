@@ -2,6 +2,7 @@
   set_fact:
     file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Pre_Task:"
     section_name: "`Pre gathering facts-Get and Set common variables`"
+    already_installed_packages: []
     is_public_server_from_3rd_party: null
   changed_when: false
 

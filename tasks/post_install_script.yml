@@ -1,0 +1,130 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Post Install`"
+    required_lines:
+      - " ✓ Corrected Proxmox VE Sources"
+      - " ✓ Disabled 'pve-enterprise' repository"
+      - " ✓ Enabled 'pve-no-subscription' repository"
+      - " ✓ Corrected 'ceph package repositories'"
+      - " ✓ Added 'pvetest' repository"
+      - "^( ✓ Disabled high availability| ✗ Selected no to Enabling high availability)$"
+      - " ✗ Selected no to Updating Proxmox VE"
+      - " ✗ Selected no to Rebooting Proxmox VE (Reboot recommended)"
+      - " ✓ Completed Post Install Routines"
+    post_pve_install_sh_file_check: null
+    post_pve_install_sh_sha1_checksum: null
+    post_pve_install_execution_result: null
+    post_pve_install_execution_result_cleaned: null
+    post_pve_install_execution_result_extracted_lines: null
+    post_pve_install_execution_failed: false
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Remove older `/root/proxmox_automation_install/task_post_install_script_*.run.tmp` files if exists"
+  shell: "rm -rf /root/proxmox_automation_install/task_post_install_script_*.run.tmp"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Remove older `/tmp/post-pve-install.sh` file if exists"
+  file:
+    path: /tmp/post-pve-install.sh
+    state: absent
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Run wget to get the details of the file from the link of `post-pve-install.sh` file"
+  shell: wget -qLO /tmp/post-pve-install.sh https://github.com/tteck/Proxmox/raw/main/misc/post-pve-install.sh
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if the `/tmp/post-pve-install.sh` is downloaded and exists"
+  stat:
+    path: /tmp/post-pve-install.sh
+  register: post_pve_install_sh_file_check
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Fail if the `/tmp/post-pve-install.sh` file doesn't exist"
+  fail:
+    msg: "The file `/tmp/post-pve-install.sh` to be downloaded, does not exist."
+  when: not post_pve_install_sh_file_check.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Create SHA1 checksum of the local file"
+  shell: "sha1sum '/tmp/post-pve-install.sh' | awk '{print $1}'"
+  register: post_pve_install_sh_sha1_checksum
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Fail if SHA1 checksum does not match the expected value"
+  fail:
+    msg: "SHA1 checksum of `/tmp/post-pve-install.sh` does not match the expected value."
+  when: post_pve_install_sh_sha1_checksum.stdout != precalculated_post_pve_install_sh_sha1_checksum
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Run post install expect script"
+  shell: |
+    expect -c '
+      set timeout 90;
+      spawn bash /tmp/post-pve-install.sh;
+      expect "Start the Proxmox VE Post Install Script (y/n)?" { send "y\r" }
+      expect "Correct Proxmox VE sources?" { send "yes\r" }
+      expect "Disable '\''pve-enterprise'\'' repository?" { send "yes\r" }
+      expect "Enable '\''pve-no-subscription'\'' repository?" { send "yes\r" }
+      expect "Correct '\''ceph package sources?" { send "yes\r" }
+      expect "Add (Disabled) '\''pvetest'\'' repository?" { send "yes\r" }
+      # Handling the optional prompt `Disable subscription nag` with a custom timeout
+      expect {
+        "Disable subscription nag?" { send "yes\r" }
+        timeout { }
+      }
+      # Handling the optional prompt `Support Subscriptions` with a custom timeout
+      expect {
+        "Support Subscriptions" { send "\r" }
+        timeout { }
+      }
+      # Handling the optional prompt `Enable high availability?` with a custom timeout
+      expect -timeout 120 {
+        "Enable high availability?" { send "no\r" }
+        timeout { }
+      }
+      expect -timeout 90 "Disable high availability?" { send "yes\r" }
+      expect -timeout 90 "Update Proxmox VE now?" { send "no\r" }
+      expect "Reboot Proxmox VE now? (recommended)" { send "no\r" }
+      expect eof'
+  register: post_pve_install_execution_result
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Clean up the output by removing unreadable characters"
+  set_fact:
+    post_pve_install_execution_result_cleaned: "{{ post_pve_install_execution_result.stdout | 
+                      regex_replace('[\u0000-\u0009,\u000B,\u000C,\u000E-\u001F]', '') | 
+                      regex_replace('\\(B|\\[[KmH]|\\[\\?{0,1}(?:\\d{1,4};){0,3}\\d{1,4}\\w', '') | 
+                      regex_replace('\\s{10,100}', '          ')
+                      }}"
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Extract specific lines containing `✓` or `✗` from `post_pve_install_execution_result_cleaned` using regex"
+  set_fact:
+    post_pve_install_execution_result_extracted_lines: "{{ post_pve_install_execution_result_cleaned | regex_findall('.[✓✗].*?(?=\\Z|\\r|\\n|\\s{3})') }}"
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Fail if any required line is missing"
+  fail:
+    msg: "The following line was not found in the extracted lines: {{ item }}"
+  when: >
+    (item not in post_pve_install_execution_result_extracted_lines) and
+    (item is search('^\\^') | ternary(post_pve_install_execution_result_extracted_lines | select('match', item) | list | length == 0, true, false))
+  loop: "{{ required_lines }}"
+  register: post_pve_install_execution_failed_output
+  ignore_errors: true
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Set `post_pve_install_execution_failed` flag to true, if `post_pve_install_execution_failed_output` is failed"
+  set_fact:
+    post_pve_install_execution_failed: true
+  when: post_pve_install_execution_failed_output is failed
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Show `post_pve_install_execution_result_cleaned` if `post_pve_install_execution_failed` is true"
+  fail:
+    msg: "post_pve_install_execution_result_cleaned: {{ post_pve_install_execution_result_cleaned }}"
+  when: post_pve_install_execution_failed
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Fail if `subscription nag` line is present and it doesn't contain `✓ Disabled` with it"
+  fail:
+    msg: "`subscription nag` line is present and it doesn't contain `✓ Disabled` with it."
+  when: >
+    (post_pve_install_execution_result_extracted_lines | select('search', 'subscription nag') | list | length > 0) and
+    (' ✓ Disabled subscription nag (Delete browser cache)' not in post_pve_install_execution_result_extracted_lines)
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Touching run file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_post_install_script_* && sleep 2 && touch /root/proxmox_automation_install/task_post_install_script_$(date +%Y%m%d-%H%M%S).run.tmp"
+  ignore_errors: true
+  changed_when: false

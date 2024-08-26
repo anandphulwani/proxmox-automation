@@ -20,7 +20,12 @@ Replace the placeholder values in `inventory.yml` with actual values. Look for a
 ### Step 3: Run the Playbook
 Use one of the following commands to run the Ansible playbook:
 
-**Option 1: Using `ansible-playbook` Command**
+**Option 1: Using a Python Script (`playbook_runner.py`)**
+```bash
+clear && sudo python playbook_runner.py
+```
+
+**Option 2: Using `ansible-playbook` Command**
 ```bash
 clear && sudo ansible-playbook -i inventory.yml playbook.yml --ask-pass
 ```

@@ -1,0 +1,18 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno) }}-Message:"
+    section_name: "`Virtualization and VT-d enabled`"
+    message_output: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Execute `border_message.py` Python script on localhost"
+  shell: "python3 includes/border_message.py \"Make sure \\`Virtualization\\` and \n\\`VT-d\\` is enabled in the BIOS.\""
+  register: message_output
+  delegate_to: localhost
+  changed_when: false
+  run_once: true
+  
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Show message."
+  delegate_to: localhost
+  pause:
+    prompt: "{{ message_output.stdout }}\nPress a key to continue"

@@ -3,6 +3,7 @@
   hosts: all
   gather_facts: no
   vars:
+    pretask_taskandtaskcondition_message_sno: 1
 
   tasks:
     - name: Gather facts manually

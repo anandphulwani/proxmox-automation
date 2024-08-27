@@ -1,0 +1,3 @@
+- name: "Increment `pretask_taskandtaskcondition_message_sno` value: {{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }} by 1"
+  set_fact:
+    pretask_taskandtaskcondition_message_sno: "{{ pretask_taskandtaskcondition_message_sno | int + 1 }}"

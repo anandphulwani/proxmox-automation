@@ -39,7 +39,17 @@ Replace the placeholder values in `inventory.yml` with actual values. Look for a
 - `<<Host01-Username>>` : Replace with the username to connect to Host01, usual value is `root`.
 - `<<Host01-DefaultSSHPort>>` : Replace with the SSH port number for Host01, usual value is `22` if not a nested proxmox inside another proxmox, or the default port is changed.
 
-### Step 3: Run the Playbook
+### Step 3: Copy `vault.yml.template` Template File
+Copy the `vault.yml.template` to `vault.yml`:
+
+```bash
+cp vault.yml.template vault.yml
+```
+
+### Step 4: Replace Values in `vault.yml`
+Replace the placeholder values in `vault.yml` with actual values. Look for all variables enclosed in `<< >>` and provide the appropriate values.
+
+### Step 5: Run the Playbook
 Use one of the following commands to run the Ansible playbook:
 
 **Option 1: Using a Python Script (`playbook_runner.py`)**

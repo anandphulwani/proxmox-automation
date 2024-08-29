@@ -2,8 +2,23 @@
   set_fact:
     file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Pre_Task:"
     section_name: "`Pre gathering facts-Get and Set common variables`"
+    is_public_server_from_3rd_party: null
   changed_when: false
 
 - name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Set `terminal_width` with a default value"
   set_fact:
     terminal_width: "{{ terminal_width | default(80) }}"
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Prompt to check whether it is a public hosted rented server from a 3rd party (yes/no)"
+  pause:
+    prompt: "Is it a public hosted rented server from a 3rd party? (yes/no)"
+  register: is_public_server_from_3rd_party_prompt
+  until: is_public_server_from_3rd_party_prompt.user_input in ["yes", "no"]
+  retries: 3
+  delay: 1
+  when: is_public_server_from_3rd_party is not defined
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Convert `is_public_server_from_3rd_party_prompt` user input to lowercase and assign value directly to the variable."
+  set_fact:
+    is_public_server_from_3rd_party: "{{ is_public_server_from_3rd_party_prompt.user_input.lower() | default('') }}"
+  when: is_public_server_from_3rd_party is not defined

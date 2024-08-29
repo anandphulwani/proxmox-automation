@@ -28,7 +28,7 @@ def event_handler(event):
         print(event['stdout'])
         # pass
 
-def run_playbook(playbook_path, inventory_path, ssh_password):
+def run_playbook(playbook_path, inventory_path, ssh_password, extra_vars):
     r = ansible_runner.run_async(
         private_data_dir='.',
         inventory=inventory_path,
@@ -38,6 +38,7 @@ def run_playbook(playbook_path, inventory_path, ssh_password):
         artifact_dir=None,
         rotate_artifacts=1,
         passwords={'conn_pass': ssh_password},
+        extravars=extra_vars,  # Pass extra vars here
     )
     return r
 
@@ -45,7 +46,18 @@ if __name__ == "__main__":
     playbook_path = 'playbook.yml'
     inventory_path = os.path.abspath('inventory.yml')
     ssh_password = getpass(prompt='Enter SSH password: ')
-    runner = run_playbook(playbook_path, inventory_path, ssh_password)
+    
+    # Prompt user for input in Python and pass it to Ansible
+    public_server_input = input("Is it a public hosted rented server from a 3rd party? (yes/no): ").strip().lower()
+    
+    # Ensure valid input
+    while public_server_input not in ["yes", "no"]:
+        print("Invalid input. Please enter 'yes' or 'no'.")
+        public_server_input = input("Is it a public hosted rented server from a 3rd party? (yes/no): ").strip().lower()
+
+    extra_vars = {'is_public_server_from_3rd_party': public_server_input}
+    
+    runner = run_playbook(playbook_path, inventory_path, ssh_password, extra_vars)
     runner[0].join()  # Ensure the thread finishes
 
     # Cleanup artifacts directory

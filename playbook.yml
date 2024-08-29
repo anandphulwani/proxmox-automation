@@ -3,7 +3,8 @@
 #
 #                                  PRE_TASK, TASK_CONDITION & TASK
 #
-#     01. Post Completion Tasks and Cleanup (TASK only)
+#     01. Pre gathering facts-Get and Set common variables (PRE_TASK)
+#     02. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -14,6 +15,14 @@
   vars:
     pretask_taskandtaskcondition_message_sno: 1
     is_condition_post_completion_tasks_and_cleanup: false
+
+  pre_tasks:
+    # `Pre gathering facts-Get and Set common variables`
+    - name: ""
+      import_tasks: pre_tasks/pre_gathering_facts-get_and_set_common_variables.yml
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
 
   tasks:
     # `Gathering facts manually`

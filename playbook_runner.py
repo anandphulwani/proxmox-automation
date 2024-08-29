@@ -55,7 +55,15 @@ if __name__ == "__main__":
         print("Invalid input. Please enter 'yes' or 'no'.")
         public_server_input = input("Is it a public hosted rented server from a 3rd party? (yes/no): ").strip().lower()
 
-    extra_vars = {'is_public_server_from_3rd_party': public_server_input}
+    # Prompt user for input in Python and pass it to Ansible
+    proxmox_accessed_directly_input = input("Is proxmox accessed directly(yes) or via port forwarding/nested proxmox vm(no)?: ").strip().lower()
+    
+    # Ensure valid input
+    while proxmox_accessed_directly_input not in ["yes", "no"]:
+        print("Invalid input. Please enter 'yes' or 'no'.")
+        proxmox_accessed_directly_input = input("Is proxmox accessed directly(yes) or via port forwarding/nested proxmox vm(no)?: ").strip().lower()
+
+    extra_vars = {'is_public_server_from_3rd_party': public_server_input, 'is_proxmox_accessed_directly': proxmox_accessed_directly_input}
     
     runner = run_playbook(playbook_path, inventory_path, ssh_password, extra_vars)
     runner[0].join()  # Ensure the thread finishes

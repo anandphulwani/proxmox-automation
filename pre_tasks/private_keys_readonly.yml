@@ -1,0 +1,24 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Pre_Task:"
+    section_name: "`Private keys make read only`"
+    rsa_files: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Find `.id_rsa` files in the current directory"
+  find:
+    paths: "."
+    patterns: "*.id_rsa"
+  delegate_to: localhost
+  register: rsa_files
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Fail if no `.id_rsa` file is found"
+  fail:
+    msg: "No file ending with `.id_rsa` found in the current directory."
+  when: rsa_files.matched == 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Make all keys ending with `.id_rsa` as read only."
+  shell: chmod go-rwx *.id_rsa
+  delegate_to: localhost
+  become: true 
+  changed_when: false

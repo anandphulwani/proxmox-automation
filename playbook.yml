@@ -4,13 +4,14 @@
 #                                  PRE_TASK, TASK_CONDITION & TASK
 #
 #     01. Pre gathering facts-Get and Set common variables (PRE_TASK)
-#     02. Virtualization and VT-d enabled (PRE_TASK)
-#     03. Prerequisites (TASK_CONDITION only)
-#     04. Post install script
-#     05. Update and upgrade
-#     06. Install common packages
-#     07. SSH Port
-#     08. Post Completion Tasks and Cleanup (TASK only)
+#     02. Private keys make read only (PRE_TASK)
+#     03. Virtualization and VT-d enabled (PRE_TASK)
+#     04. Prerequisites (TASK_CONDITION only)
+#     05. Post install script
+#     06. Update and upgrade
+#     07. Install common packages
+#     08. SSH Port
+#     09. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -33,6 +34,13 @@
     # `Pre gathering facts-Get and Set common variables`
     - name: ""
       import_tasks: pre_tasks/pre_gathering_facts-get_and_set_common_variables.yml
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `Private keys make read only`
+    - name: ""
+      import_tasks: pre_tasks/private_keys_readonly.yml
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

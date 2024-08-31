@@ -1,0 +1,10 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Post gathering facts-Get and Set common variables`"
+    current_hostname: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Get current hostname"
+  set_fact:
+    current_hostname: "{{ ansible_hostname }}"

@@ -61,3 +61,10 @@ clear && sudo python playbook_runner.py
 ```bash
 clear && TERMINAL_WIDTH=$(tput cols) && sudo ansible-playbook -e "terminal_width=${TERMINAL_WIDTH}" -i inventory.yml playbook.yml --ask-pass
 ```
+
+After `ssh_login_with_key.yml` is executed and the script ends gracefully, 
+remove the `--ask-pass` parameter to make the command look like below
+and use it to restart the script thereon.
+```bash
+clear && TERMINAL_WIDTH=$(tput cols) && sudo ansible-playbook -e "terminal_width=${TERMINAL_WIDTH}" -i inventory.yml playbook.yml
+```

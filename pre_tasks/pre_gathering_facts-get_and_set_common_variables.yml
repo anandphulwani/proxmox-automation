@@ -3,3 +3,7 @@
     file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Pre_Task:"
     section_name: "`Pre gathering facts-Get and Set common variables`"
   changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Set `terminal_width` with a default value"
+  set_fact:
+    terminal_width: "{{ terminal_width | default(80) }}"

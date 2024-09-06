@@ -1,11 +1,26 @@
+############################################################################################################
+#
+#
+#                                  PRE_TASK, TASK_CONDITION & TASK
+#
+#     01. Post Completion Tasks and Cleanup (TASK only)
+#
+#
+############################################################################################################
 ---
 - name: Proxmox initial setup
   hosts: all
   gather_facts: no
   vars:
     pretask_taskandtaskcondition_message_sno: 1
+    is_condition_post_completion_tasks_and_cleanup: false
 
   tasks:
     # `Gathering facts manually`
     - name: Gather facts manually
       setup:
+
+    # `Post Completion Tasks and Cleanup`
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Post Completion Tasks and Cleanup`, Caller block"
+      include_tasks: tasks/post_completion_tasks_and_cleanup.yml
+      when: is_condition_post_completion_tasks_and_cleanup

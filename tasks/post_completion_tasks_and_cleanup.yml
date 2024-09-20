@@ -16,4 +16,4 @@
   reboot:
     msg: "Reboot initiated by `Post Completion Tasks and Cleanup.yml`"
     reboot_timeout: 600
-  when: is_condition_webgui_port or is_condition_iommu or is_condition_iommu_modules
+  when: is_condition_webgui_port or is_condition_iommu or is_condition_iommu_modules or is_condition_modify_add_network_adapters

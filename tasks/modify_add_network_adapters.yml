@@ -1,0 +1,115 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Modify Add Network Adapters`"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Modify `/etc/network/interfaces` to rename `vmbr0` to `vmbr0A_mainbrg`"
+  replace:
+    path: /etc/network/interfaces
+    regexp: "\
+      (\
+        [\\s\\S]*\
+      )\
+      (?:\
+        \\r?\\nauto vmbr0\
+        \\r?\\niface vmbr0[ ]\
+      )\
+      (\
+        [\\s\\S]*\
+      )"
+    replace: "\
+      \\1\
+      \nauto vmbr0A_mainbrg\
+      \niface vmbr0A_mainbrg \
+      \\2"
+  when: is_vmbr0_modified_in_interfaces.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr0B_LANnIntrnt`"
+  replace:
+    path: /etc/network/interfaces
+    regexp: "\
+      \\A\
+      (?!\
+          [\\s\\S]*\
+          auto vmbr0B_LANnIntrnt\
+      )\
+      (\
+          [\\s\\S]*?\
+          \\r?\\n\
+      )\
+      (\
+        [ \\t]*\\r?\\n\
+        [ \\t]*source[ ]\
+        [\\s\\S]*\
+      )"
+    replace: "\
+      \\1\n\
+      auto vmbr0B_LANnIntrnt\n\
+      iface vmbr0B_LANnIntrnt inet manual\n\
+      \tbridge-ports none\n\
+      \tbridge-stp off\n\
+      \tbridge-fd 0\n\
+      \tbridge-vlan-aware yes\n\
+      \tbridge-vids 2-4094\n\
+      \\2"
+  when: is_vmbr0B_present_in_interfaces.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Get physical interfaces to process"
+  shell: |
+    interfaces=$(grep '^iface ' /etc/network/interfaces | awk '{print $2}' | grep -v '^vmbr' | grep -v '^lo')
+    bridge_ports=$(grep -P -e '^[ \t]*bridge-ports ' /etc/network/interfaces | awk '{print $2}')
+    for iface in $interfaces; do
+      if ! echo "$bridge_ports" | grep -qw "$iface"; then
+        echo "$iface"
+      fi
+    done
+  register: physical_interfaces
+  changed_when: false
+  when: physical_card_without_bridge_count.stdout | int > 0
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Add interface blocks to /etc/network/interfaces"
+  replace:
+    path: /etc/network/interfaces
+    regexp: "\
+      \\A\
+      (\
+          [\\s\\S]*?\
+          \\r?\\n\
+      )\
+      (\
+        [ \\t]*\\r?\\n\
+        [ \\t]*source[ ]\
+        [\\s\\S]*\
+      )"
+    replace: "\
+      \\1\n\
+      auto vmbr_IP_{{ item }}\n\
+      # iface vmbr_IP_{{ item }} inet static\n\
+      iface vmbr_IP_{{ item }} inet dhcp\n\
+      \t# address 0.0.0.0/24\n\
+      \t# gateway 0.0.0.0\n\
+      \tbridge-ports {{ item }}\n\
+      \tbridge-stp off\n\
+      \tbridge-fd 0\n\
+      \\2"
+  loop: "{{ physical_interfaces.stdout_lines }}"
+  when: physical_card_without_bridge_count.stdout | int > 0
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Restart `networking` service"
+  service:
+    name: networking
+    state: restarted
+  when: is_vmbr0_modified_in_interfaces.rc != 0 or is_vmbr0B_present_in_interfaces.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Touching checksum file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_modify_add_network_adapters_* && sleep 2 && touch /root/proxmox_automation_install/task_modify_add_network_adapters_$(date +%Y%m%d-%H%M%S).run.tmp"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
+  reboot:
+    msg: "Reboot initiated by Ansible for networking `interface` changes"
+    reboot_timeout: 600
+  when: 
+    - is_condition_post_completion_tasks_and_cleanup is not defined
+    - is_vmbr0_modified_in_interfaces.rc != 0 or is_vmbr0B_present_in_interfaces.rc != 0

@@ -1,0 +1,59 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Modify Add Network Adapters`"
+    latest_datetime_task: null
+    is_any_file_being_changed_after_run_file: null
+    is_run_file_older_than_any_file_being_changed: false
+    is_vmbr0_modified_in_interfaces: null
+    is_vmbr0B_present_in_interfaces: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Get the latest run file if exits"
+  shell: ls -1r /root/proxmox_automation_install/task_modify_add_network_adapters_*.run.tmp | head -n 1 | grep -oP "[^_]_\K[0-9]{8}-[0-9]{6}"
+  register: latest_datetime_task
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if latest run file is not older than any files being changed's modification time"
+  shell: "[ $(date -d \"$(echo \"{{ latest_datetime_task.stdout }}\" | sed -E 's/([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})/\\1-\\2-\\3 \\4:\\5:\\6/')\" +%s) -ge $(stat -c %Y \"/etc/network/interfaces\") ]"
+  register: is_any_file_being_changed_after_run_file
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: 
+    - latest_datetime_task.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Set `is_run_file_older_than_any_file_being_changed` based on conditions"
+  set_fact:
+    is_run_file_older_than_any_file_being_changed: true
+  when: (is_any_file_being_changed_after_run_file.skipped is defined and is_any_file_being_changed_after_run_file.skipped)
+        or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if the specified line exists in `/etc/network/interfaces`"
+  shell: "grep -qPoz -e \"auto vmbr0A_mainbrg\\s*\\niface vmbr0A_mainbrg.*\\n\" /etc/network/interfaces"
+  register: is_vmbr0_modified_in_interfaces
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if the specified line exists in `/etc/network/interfaces`"
+  shell: "grep -qPoz -e \"auto vmbr0B_LANnIntrnt\\s*\\niface vmbr0B_LANnIntrnt.*\\n\" /etc/network/interfaces"
+  register: is_vmbr0B_present_in_interfaces
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Get the total number of physical network cards minus unique bridge-ports (excluding 'none') using pipes"
+  shell: echo $(( $(grep '^iface ' /etc/network/interfaces | grep -v '^iface vmbr' | grep -v '^iface lo' | sort -u | wc -l) - $(grep -P -e '^[ \t]*bridge-ports ' /etc/network/interfaces | grep -v 'none' | sort -u | wc -l) ))
+  register: physical_card_without_bridge_count
+  changed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Set `is_condition_modify_add_network_adapters` based on conditions"
+  set_fact:
+    is_condition_modify_add_network_adapters: true
+  when: is_run_file_older_than_any_file_being_changed

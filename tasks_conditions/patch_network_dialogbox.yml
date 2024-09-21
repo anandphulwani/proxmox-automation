@@ -1,0 +1,144 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Patch Network Dialogbox`"
+    latest_datetime_task: null
+    recent_file_of_all_files_being_changed: null
+    is_any_file_being_changed_after_run_file: null
+    is_run_file_older_than_any_file_being_changed: false
+    is_filtering_mainbrg_functionality_added_to_bridge_dropdown_box: null
+    is_enable_main_bridge_checkbox_present: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Get the latest run file if exits"
+  shell: ls -1r /root/proxmox_automation_install/task_patch_network_dialogbox_*.run.tmp | head -n 1 | grep -oP "[^_]_\K[0-9]{8}-[0-9]{6}"
+  register: latest_datetime_task
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if latest run file is not older than any files being changed's modification time"
+  shell: "[ $(date -d \"$(echo \"{{ latest_datetime_task.stdout }}\" | sed -E 's/([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})/\\1-\\2-\\3 \\4:\\5:\\6/')\" +%s) -ge $(stat -c %Y \"/usr/share/pve-manager/js/pvemanagerlib.js\") ]"
+  register: is_any_file_being_changed_after_run_file
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: 
+    - not (latest_datetime_task.stderr_lines is defined and latest_datetime_task.stderr_lines | length > 0)
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Set `is_run_file_older_than_any_file_being_changed` based on conditions"
+  set_fact:
+    is_run_file_older_than_any_file_being_changed: true
+  when: (is_any_file_being_changed_after_run_file.skipped is defined and is_any_file_being_changed_after_run_file.skipped)
+        or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
+
+  # #   
+  # #  To enable filtering `_mainbrg` inside `bridge` dropdown box inside the `network` section of creating/editing VM dialog box
+  # #  Searching for the following changes in the file `/usr/share/pve-manager/js/pvemanagerlib.js`
+  # #
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if above changes in `/usr/share/pve-manager/js/pvemanagerlib.js` already exists"
+  shell: |
+    regex="me\.bridgesel = Ext.create\('PVE\.form\.BridgeSelector', \{\r?\n"
+    regex="$regex[ \t]*name: 'bridge',\r?\n"
+    regex="$regex[ \t]*fieldLabel: gettext\('Bridge'\),\r?\n"
+    regex="$regex(?:(?!\}\);)[\s\S])*?"
+
+    regex="$regex[ \t]*autoSelect: false,\r?\n"
+    regex="$regex(?:(?!\}\);)[\s\S])*?"
+
+    regex="$regex[ \t]*listeners: \{\r?\n"
+    regex="$regex[ \t]*afterrender: function\(combo\) \{\r?\n"
+    regex="$regex[ \t]*// Apply initial filter to hide '_mainbrg' options by default\r?\n"
+    regex="$regex[ \t]*combo\.store\.filterBy\(function\(record\) \{\r?\n"
+    regex="$regex[ \t]*return !record\.get\('iface'\)\.endsWith\('_mainbrg'\);\r?\n"
+    regex="$regex[ \t]*\}\);\r?\n"
+    regex="$regex[ \t]*// Manually select the first item in the filtered store if needed\r?\n"
+    regex="$regex[ \t]*var firstRecord = combo\.store\.first\(\);\r?\n"
+    regex="$regex[ \t]*if \(firstRecord\) \{\r?\n"
+    regex="$regex[ \t]*combo\.setValue\(firstRecord\.get\(combo\.valueField\)\);\r?\n"
+    regex="$regex[ \t]*\} else \{\r?\n"
+    regex="$regex[ \t]*// Handle case where no items are available after filtering\r?\n"
+    regex="$regex[ \t]*combo\.reset\(\);\r?\n"
+    regex="$regex[ \t]*\}\r?\n"
+    regex="$regex[ \t]*\}\r?\n"
+    regex="$regex[ \t]*\},?\r?\n"
+
+    regex="$regex[\s\S]*?"
+    regex="$regex\}\);"
+
+    grep -Pzo -e "$regex" /usr/share/pve-manager/js/pvemanagerlib.js
+  register: is_filtering_mainbrg_functionality_added_to_bridge_dropdown_box
+  ignore_errors: true
+  changed_when: false
+  failed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+  # #   
+  # #  Check if `Enable Main Bridge` checkbox and it's functionality present below `bridge` dropdown box inside the `network` section of creating/editing VM dialog box
+  # #  Check `firewall` checkbox from left column bottom to right column bottom
+  # #  Searching for the following changes in the file `/usr/share/pve-manager/js/pvemanagerlib.js`
+  # #
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if above changes in `/usr/share/pve-manager/js/pvemanagerlib.js` already exists"
+  shell: |
+    regex="me\.column1 = \[\r?\n"
+    regex="$regex[ \t]*me\.bridgesel,\r?\n"
+
+    regex="$regex[ \t]*\{\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*name: 'enable_mainbrg',\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*\},?\r?\n"
+
+    regex="$regex[ \t]*\{\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*name: 'tag',\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*\},?\r?\n"
+    regex="$regex[ \t]*\];\r?\n"
+
+    regex="$regex[ \t]*\r?\n"
+    regex="$regex[ \t]*me\.advancedColumn1 = \[\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*\];\r?\n"
+           
+    regex="$regex[ \t]*\r?\n"
+    regex="$regex[ \t]*if \(me\.insideWizard\) \{\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*\}\r?\n"
+
+    regex="$regex[ \t]*\r?\n"
+    regex="$regex[ \t]*me\.column2\.push\(\r?\n"
+
+    regex="$regex[ \t]*\{\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*name: 'model',\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*\},?\r?\n"
+
+    regex="$regex[ \t]*\{\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*name: 'macaddr',\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*\},?\r?\n"
+
+    regex="$regex[ \t]*\{\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*name: 'firewall',\r?\n"
+    regex="$regex[\s\S]*?"
+    regex="$regex[ \t]*\}\);\r?\n"
+
+    grep -Pzo -e "$regex" /usr/share/pve-manager/js/pvemanagerlib.js
+  register: is_enable_main_bridge_checkbox_present
+  ignore_errors: true
+  changed_when: false
+  failed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Set `is_condition_patch_network_dialogbox` based on conditions"
+  set_fact:
+    is_condition_patch_network_dialogbox: true
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - is_filtering_mainbrg_functionality_added_to_bridge_dropdown_box.rc != 0 or is_enable_main_bridge_checkbox_present.rc != 0

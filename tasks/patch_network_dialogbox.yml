@@ -1,0 +1,292 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Patch Network Dialogbox`"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Defining Regex variables to be used in further tasks"
+  vars:
+    capture_space_and_tabs: "[ \\t]*"
+    new_line: "\\r?\\n"
+    everything: "[\\s\\S]"
+    capture_non_listenerstext_and_closingbraceandclosingparanthesesandsemicolor_lines: "\
+      (?:\
+        (?!\
+          listeners:\
+        )\
+        (?!\
+          {{ capture_space_and_tabs }}\
+          {{ '}\\);' }}\
+          {{ capture_space_and_tabs }}\
+          {{ new_line }}\
+        )\
+        {{ everything }}\
+      )*?\
+      {{ new_line }}"
+    capture_non_whitespaceandbrace_lines: "\
+      (?:\
+        (?!\
+            {{ capture_space_and_tabs }}\
+            {{ '{' }}\
+            {{ capture_space_and_tabs }}\
+            {{ new_line }}\
+          |\
+            {{ capture_space_and_tabs }}\
+            {{ '}' }}\
+            {{ capture_space_and_tabs }}\
+            {{ new_line }}\
+        )\
+        {{ everything }}\
+      )*?\
+      {{ new_line }}"
+  set_fact:
+    indent01: "\\t"
+    indent02: "\\t    "
+    indent03: "\\t\\t"
+    indent04: "\\t\\t    "
+    indent05: "\\t\\t\\t"
+    indent06: "\\t\\t\\t    "
+    indent07: "\\t\\t\\t\\t"
+    indent08: "\\t\\t\\t\\t    "
+    capture_space_and_tabs: "{{ capture_space_and_tabs }}"
+    new_line: "{{ new_line }}"
+    everything: "{{ everything }}"
+    capture_non_listenerstext_and_closingbraceandclosingparanthesesandsemicolor_lines: "{{ capture_non_listenerstext_and_closingbraceandclosingparanthesesandsemicolor_lines }}"
+    capture_non_whitespaceandbrace_lines: "{{ capture_non_whitespaceandbrace_lines }}"
+
+  # #   
+  # #  To enable filtering inside `bridge` dropdown box inside the `network` section of creating/editing VM dialog box
+  # #  Making the following changes in the file `/usr/share/pve-manager/js/pvemanagerlib.js`
+  # #
+  # # ```
+  #           me.bridgesel = Ext.create('PVE.form.BridgeSelector', {
+  #             name: 'bridge',
+  #             fieldLabel: gettext('Bridge'),
+  #             nodename: me.nodename,
+  # ######################################## 01st Change Start: Changed autoSelect from `true` to `false`
+  #             autoSelect: false,
+  # ######################################## 01st Change End 
+  #             allowBlank: false,
+  # ######################################## 02nd Change Start: Added the lines below
+  #             listeners: {
+  #                 afterrender: function(combo) {
+  #                     // Apply initial filter to hide '_mainbrg' options by default
+  #                     combo.store.filterBy(function(record) {
+  #                         return !record.get('iface').endsWith('_mainbrg');
+  #                     });
+  #                     // Manually select the first item in the filtered store if needed
+  #                     var firstRecord = combo.store.first();
+  #                     if (firstRecord) {
+  #                         combo.setValue(firstRecord.get(combo.valueField));
+  #                     } else {
+  #                         // Handle case where no items are available after filtering
+  #                         combo.reset();
+  #                     }
+  #                 }
+  #             },
+  # ######################################## 02nd Change End 
+  #         });
+  # # ```
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Modify `bridge` network dropdown box functionality to avoid `_mainbrg` if checkbox is unchecked"
+  replace:
+    path: /usr/share/pve-manager/js/pvemanagerlib.js
+    regexp: "\
+      (\
+        me\\.bridgesel = Ext.create\\('PVE\\.form\\.BridgeSelector', {{ '{' }}{{ new_line }}\
+        {{ capture_space_and_tabs }}name\\: 'bridge',{{ new_line }}\
+        {{ capture_non_listenerstext_and_closingbraceandclosingparanthesesandsemicolor_lines }}\
+      )\
+      (?:\
+        {{ capture_space_and_tabs }}autoSelect\\: true,{{ new_line }}\
+      )\
+      (\
+        {{ capture_non_listenerstext_and_closingbraceandclosingparanthesesandsemicolor_lines }}\
+      )\
+      (\
+        {{ capture_space_and_tabs }}{{ '}\\);' }}{{ new_line }}\
+      )"
+    replace: "\
+      \\1\
+      {{ indent02 }}autoSelect: false,\n\
+      \\2\
+      {{ indent02 }}listeners: {\n\
+      {{ indent03 }}afterrender: function(combo) {\n\
+      {{ indent04 }}// Apply initial filter to hide '_mainbrg' options by default\n\
+      {{ indent04 }}combo.store.filterBy(function(record) {\n\
+      {{ indent05 }}return !record.get('iface').endsWith('_mainbrg');\n\
+      {{ indent04 }}{{ '});' }}\n\
+      {{ indent04 }}// Manually select the first item in the filtered store if needed\n\
+      {{ indent04 }}var firstRecord = combo.store.first();\n\
+      {{ indent04 }}if (firstRecord) {\n\
+      {{ indent05 }}combo.setValue(firstRecord.get(combo.valueField));\n\
+      {{ indent04 }}{{ '} else {' }}\n\
+      {{ indent05 }}// Handle case where no items are available after filtering\n\
+      {{ indent05 }}combo.reset();\n\
+      {{ indent04 }}{{ '}' }}\n\
+      {{ indent03 }}{{ '}' }}\n\
+      {{ indent02 }}{{ '},' }}\n\
+      \\3"
+  when: is_filtering_mainbrg_functionality_added_to_bridge_dropdown_box.rc != 0
+
+  # #   
+  # #  Add `Enable Main Bridge` checkbox below `bridge` dropdown box inside the `network` section of creating/editing VM dialog box
+  # #  Add `Enable Main Bridge` checkbox functionality
+  # #  Shifted `firewall` checkbox from left column bottom to right column bottom
+  # #  Making the following changes in the file `/usr/share/pve-manager/js/pvemanagerlib.js`
+  # #
+  # # ```
+  #           me.column1 = [
+  #               me.bridgesel,
+  # ########################################## 02nd Change Start: Added the lines below
+  #               {
+  #                   xtype: 'checkbox',
+  #                   name: 'enable_mainbrg',
+  #                   fieldLabel: 'Enable Main Bridge',
+  #                   checked: false, // Default unchecked
+  #                   listeners: {
+  #                       change: function(checkbox, newValue) {
+  #                           // Access the bridge combo box
+  #                           var bridgeField = me.down('field[name=bridge]');
+  #                           if (newValue) {
+  #                               // Show all bridge options when checked
+  #                               bridgeField.store.clearFilter();
+  #                           } else {
+  #                               // Apply filter to hide bridges that start with '_mainbrg'
+  #                               bridgeField.store.filterBy(function(record) {
+  #                                   return !record.get('iface').endsWith('_mainbrg');
+  #                               });
+  #                           }
+  #                       }
+  #                   },
+  #               },
+  # ########################################## 02nd Change End 
+  #               {
+  #                   xtype: 'pveVlanField',
+  #                   name: 'tag',
+  #                   value: '',
+  #               },
+  # ########################################## 01-A Change Start: Capture `name: 'firewall'` block, to be shifted below
+  # ########################################## 01-A Change End
+  #           ];
+  #             
+  #           me.advancedColumn1 = [
+  # ########################################## Some content here
+  #           ];
+  #             
+  #           if (me.insideWizard) {
+  # ########################################## Some content here
+  #           }
+  #             
+  #           me.column2.push(
+  #               {
+  #                   xtype: 'pveNetworkCardSelector',
+  #                   name: 'model',
+  #                   fieldLabel: gettext('Model'),
+  #                   bind: '{networkModel}',
+  #                   value: PVE.qemu.OSDefaults.generic.networkCard,
+  #                   allowBlank: false,
+  #               },
+  #               {
+  #                   xtype: 'textfield',
+  #                   name: 'macaddr',
+  #                   fieldLabel: gettext('MAC address'),
+  #                   vtype: 'MacAddress',
+  #                   allowBlank: true,
+  #                   emptyText: 'auto',
+  #               },
+  # ########################################## 01-B Change Start: Captured `name: 'firewall'` block, shifted here
+  #               {
+  #                   xtype: 'proxmoxcheckbox',
+  #                   fieldLabel: gettext('Firewall'),
+  #                   name: 'firewall',
+  #                   checked: me.insideWizard || me.isCreate,
+  #               });
+  # ########################################## 01-B Change End (Ends after `}` above and before `);` above)
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Add `enable main bridge` checkbox if it doesn't exists and shift `firewall` checkbox to the right"
+  replace:
+    path: /usr/share/pve-manager/js/pvemanagerlib.js
+    regexp: "\
+      (\
+        me\\.column1 = \\[{{ new_line }}\
+        {{ capture_space_and_tabs }}me\\.bridgesel,{{ new_line }}\
+      )\
+      (\
+        {{ capture_space_and_tabs }}{{ '{' }}{{ new_line }}\
+        {{ capture_non_whitespaceandbrace_lines }}\
+        {{ capture_space_and_tabs }}name: 'tag',{{ new_line }}\
+        {{ capture_non_whitespaceandbrace_lines }}\
+        {{ capture_space_and_tabs }}{{ '},' }}{{ new_line }}\
+      )\
+      (\
+        {{ capture_space_and_tabs }}{{ '{' }}{{ new_line }}\
+        {{ capture_non_whitespaceandbrace_lines }}\
+        {{ capture_space_and_tabs }}name: 'firewall',{{ new_line }}\
+        {{ capture_non_whitespaceandbrace_lines }}\
+        {{ capture_space_and_tabs }}{{ '}' }}\
+      ),{{ new_line }}\
+      (\
+        (?:\
+          {{ everything }}*?{{ new_line }}\
+        )\
+        (?:\
+          {{ capture_space_and_tabs }}me\\.column2\\.push\\({{ new_line }}\
+        )\
+        (?:\
+          {{ capture_space_and_tabs }}{{ '{' }}{{ new_line }}\
+          {{ capture_non_whitespaceandbrace_lines }}\
+          {{ capture_space_and_tabs }}name: 'model',{{ new_line }}\
+          {{ capture_non_whitespaceandbrace_lines }}\
+          {{ capture_space_and_tabs }}{{ '},' }}{{ new_line }}\
+        )\
+        (?:\
+          {{ capture_space_and_tabs }}{{ '{' }}{{ new_line }}\
+          {{ capture_non_whitespaceandbrace_lines }}\
+          {{ capture_space_and_tabs }}name: 'macaddr',{{ new_line }}\
+          {{ capture_non_whitespaceandbrace_lines }}\
+          {{ capture_space_and_tabs }}{{ '}' }}\
+        )\
+      )\
+      (\
+        \\);{{ new_line }}\
+      )\
+      "
+    replace: "\
+      \\1\
+      {{ indent02 }}{{ '{' }}\n\
+      {{ indent03 }}xtype: 'checkbox',\n\
+      {{ indent03 }}name: 'enable_mainbrg',\n\
+      {{ indent03 }}fieldLabel: 'Enable Main Bridge',\n\
+      {{ indent03 }}checked: false, // Default unchecked\n\
+      {{ indent03 }}listeners: {\n\
+      {{ indent04 }}change: function(checkbox, newValue) {\n\
+      {{ indent05 }}// Access the bridge combo box\n\
+      {{ indent05 }}var bridgeField = me.down('field[name=bridge]');\n\
+      {{ indent05 }}if (newValue) {\n\
+      {{ indent06 }}// Show all bridge options when checked\n\
+      {{ indent06 }}bridgeField.store.clearFilter();\n\
+      {{ indent05 }}{{ '} else {' }}\n\
+      {{ indent06 }}// Apply filter to hide bridges that start with '_mainbrg'\n\
+      {{ indent06 }}bridgeField.store.filterBy(function(record) {\n\
+      {{ indent07 }}return !record.get('iface').endsWith('_mainbrg');\n\
+      {{ indent06 }}{{ '});' }}\n\
+      {{ indent05 }}{{ '}' }}\n\
+      {{ indent04 }}{{ '}' }}\n\
+      {{ indent03 }}{{ '},' }}\n\
+      {{ indent02 }}{{ '},' }}\n\
+      \\2\
+      \\4,\n\
+      \\3\
+      \\5"
+  when: is_enable_main_bridge_checkbox_present.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Restart `pveproxy` service"
+  service:
+    name: pveproxy
+    state: restarted
+  when: is_filtering_mainbrg_functionality_added_to_bridge_dropdown_box.rc != 0 or is_enable_main_bridge_checkbox_present.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Touching checksum file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_patch_network_dialogbox_* && sleep 2 && touch /root/proxmox_automation_install/task_patch_network_dialogbox_$(date +%Y%m%d-%H%M%S).run.tmp"
+  changed_when: false

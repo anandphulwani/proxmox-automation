@@ -11,6 +11,9 @@
       - curl
       - lsof
       - fail2ban # https://pve.proxmox.com/wiki/Fail2ban
+      - cron
+      - dnsmasq
+      - perl
     package_check_results: null
     missing_packages: []
   changed_when: false

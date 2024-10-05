@@ -1,0 +1,144 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Setting up LAN and Internet Bridge`"
+    latest_datetime_task: null
+    recent_file_of_all_files_being_changed: null
+    is_any_file_being_changed_after_run_file: null
+    is_run_file_older_than_any_file_being_changed: false
+    required_packages:
+      - cron
+      - dnsmasq
+      - perl
+    package_check_results: null
+    missing_packages: []
+    vmbr0B_iprange: null
+    dhcp_range_from: null
+    dhcp_range_to: null
+    default_gateway: null
+    subnet_mask: null
+    subnet_mask_octet: null
+    dns_server_01: null
+    dns_server_02: null
+    sample_client_ip: null
+    dhcp_range_present: null
+    default_gateway_present: null
+    dns_servers_present: null
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Filter out already installed packages"
+  set_fact:
+    required_packages: "{{ required_packages | difference(already_installed_packages) }}"
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if required packages are installed"
+  command: "dpkg-query -W -f='${Package} ${Status}\n' {{ required_packages | join(' ') }}"
+  register: package_check_results
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Collect missing packages from stdout"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.0] }}"
+  loop: "{{ package_check_results.stdout_lines | map('split', ' ') | map('list') | list }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "item[1] != 'install' or item[2] != 'ok' or item[3] != 'installed'"
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Collect missing packages from stderr"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.split(' ')[-1]] }}"
+  loop: "{{ package_check_results.stderr_lines }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "'no packages found matching' in item"
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Add already installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + (required_packages | difference(missing_packages))) | unique }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Install missing required packages"
+  apt:
+    name: "{{ missing_packages }}"
+    state: present
+  when: missing_packages is defined and missing_packages | length > 0
+
+# For when the `missing_packages` are installed
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Add new installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + missing_packages) | unique }}"
+  when: missing_packages is defined and missing_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Get the latest run file if exits"
+  shell: ls -1r /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_*.run.tmp | head -n 1 | grep -oP "[^_]_\K[0-9]{8}-[0-9]{6}"
+  register: latest_datetime_task
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Check if latest run file is not older than any files being changed's modification time"
+  shell: "[ $(date -d \"$(echo \"{{ latest_datetime_task.stdout }}\" | sed -E 's/([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})/\\1-\\2-\\3 \\4:\\5:\\6/')\" +%s) -ge $(stat -c %Y \"/etc/network/interfaces\") ]"
+  register: is_any_file_being_changed_after_run_file
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: 
+    - latest_datetime_task.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Set `is_run_file_older_than_any_file_being_changed` based on conditions"
+  set_fact:
+    is_run_file_older_than_any_file_being_changed: true
+  when: (is_any_file_being_changed_after_run_file.skipped is defined and is_any_file_being_changed_after_run_file.skipped)
+        or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Determine vmbr0B_iprange using the assigned IP address"
+  set_fact:
+    vmbr0B_iprange: "{{ '10.0.0.0/8' if ansible_all_ipv4_addresses | map('regex_search', '^192\\.168\\.0\\.\\d+$') | select | list | length > 0 else
+          '172.16.0.0/16' if ansible_all_ipv4_addresses | map('regex_search', '^10\\.\\d+\\.\\d+\\.\\d+$') | select | list | length > 0 else
+          '192.168.0.0/16' }}"
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Set DHCP related variables"
+  set_fact:
+    dhcp_range_from: "{{ '10.255.255.100' if vmbr0B_iprange == '10.0.0.0/8' else ('172.31.255.100' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.255.100') }}"
+    dhcp_range_to: "{{ '10.255.255.250' if vmbr0B_iprange == '10.0.0.0/8' else ('172.31.255.250' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.255.250') }}"
+    default_gateway: "{{ '10.0.0.1' if vmbr0B_iprange == '10.0.0.0/8' else ('172.16.0.1' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.0.1') }}"
+    subnet_mask: "{{ '255.0.0.0' if vmbr0B_iprange == '10.0.0.0/8' else '255.255.0.0' }}"
+    subnet_mask_octet: "{{ {'255.0.0.0': 8, '255.255.0.0': 16, '255.255.255.0': 24}.get(subnet_mask, 0) }}"
+    dns_server_01: "8.8.4.4"
+    dns_server_02: "1.1.1.1"
+    sample_client_ip: "{{ '10.0.0.2' if vmbr0B_iprange == '10.0.0.0/8' else ('172.16.0.2' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.0.2') }}"
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"
+  shell: grep -qrwl 'dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},6h' /etc/dnsmasq.conf
+  register: dhcp_range_present
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Check if any `default gateway` for DHCP is present in `/etc/dnsmasq.conf`"
+  shell: grep -qrwl 'dhcp-option=3,{{ default_gateway }}' /etc/dnsmasq.conf
+  register: default_gateway_present
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check if any `DNS servers` for DHCP is present in `/etc/dnsmasq.conf`"
+  shell: grep -qrwl 'dhcp-option=6,{{ dns_server_01 }},{{ dns_server_02 }}' /etc/dnsmasq.conf
+  register: dns_servers_present
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Set `is_condition_setting_up_lan_and_internet_bridge` based on conditions"
+  set_fact:
+    is_condition_setting_up_lan_and_internet_bridge: true
+  when: 
+    - is_run_file_older_than_any_file_being_changed

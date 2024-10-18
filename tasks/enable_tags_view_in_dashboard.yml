@@ -1,0 +1,161 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Enable Tags View In Dashboard`"
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Touch `/etc/pve/datacenter.cfg`"
+  file:
+    path: /etc/pve/datacenter.cfg
+    state: touch
+  when: not etcPveDatacenterCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current `/usr/share/pve-manager/js/pvemanagerlib.js`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/usr/share/pve-manager/js/ && cp /usr/share/pve-manager/js/pvemanagerlib.js /root/proxmox_automation_install/backups/usr/share/pve-manager/js/pvemanagerlib.js_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Backup current `/etc/pve/datacenter.cfg`"
+  shell: mkdir -p /root/proxmox_automation_install/backups/etc/pve/ && cp /etc/pve/datacenter.cfg /root/proxmox_automation_install/backups/etc/pve/datacenter.cfg_$(date +%Y%m%d-%H%M%S)
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Replace `tag-style: ` if it exists"
+  lineinfile:
+    path: /etc/pve/datacenter.cfg
+    regexp: '^tag-style: .*'
+    line: 'tag-style: case-sensitive=1'
+    state: present
+  when: datacenterCfg_tag_style_tag_exists
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Add `tag-style: case-sensitive=1` if it does not exist"
+  lineinfile:
+    path: /etc/pve/datacenter.cfg
+    line: 'tag-style: case-sensitive=1'
+    insertafter: EOF
+  when: not datacenterCfg_tag_style_tag_exists
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Add `Tags View` to the current set of dashboard views"
+  replace:
+    path: /usr/share/pve-manager/js/pvemanagerlib.js
+    regexp: "\
+      (let default_views = {)((\\n\
+      \\s*?)(?:server)(: {\
+      (?![^}]*tags)[^}]*?\
+      \\s*?text: gettext\\(')(?:Server)( View'\\),\
+      \\s*?groups: \\['node')(\\],\
+      \\s*?},))"
+    replace: "\\1\\3tags\\4Tags\\5, 'tags'\\6\\2"
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Add function `extractGrpTag` to extract `grp` prefixed tags, which will become the parent folders for the VMs"
+  replace:
+    path: /usr/share/pve-manager/js/pvemanagerlib.js
+    regexp: "\
+      \\A((?:[^\\n]*\\n)*?)\
+      ((?![^\\n]*extractGrpTag:)[^\\n]*\\n)\
+      ((?:.*\\n){10})\
+      [ \\t]*// private\\n\
+      ([ \\t]*)groupChild:"
+    replace: |-
+      \1\2\3\4extractGrpTag: function (tags) {
+      \4    if (!tags) {
+      \4        return null;
+      \4    }
+      \4    tags = tags.split(";");
+      \4    const result = tags
+      \4        .filter(tag => tag && typeof tag === 'string' && tag.startsWith('grp'))  // Filter only valid strings starting with 'grp'
+      \4        .map(tag => tag.replace(/^grp/, ''));  // Remove the 'grp' prefix
+      \4    return result.length > 0 ? result : null;  // Return the result or null if empty
+      \4},
+
+      \4// private
+      \4groupChild:
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Modified function `groupChild` and added `processGroupChild` to create `grp` prefixed tags as the parent folders for the VMs"
+  replace:
+    path: /usr/share/pve-manager/js/pvemanagerlib.js
+    regexp: "\
+      ([ \\t]*)// private\\n\
+      [ \\t]*groupChild: .*\\n\
+      (?:(?:.*\\n){6})\
+      (?:(?![^\\n]*extractGrpTag)[^\\n]*\\n)\
+      [\\s\\S]*?\\n\
+      [ \\t]*},(\\n\\n)"
+    replace: |-
+      \1// private
+      \1groupChild: function (node, info, groups, level) {
+      \1    let me = this;
+          
+      \1    let groupBy = groups[level];
+      \1    let v = info[groupBy];
+      \1    // Custom logic for 'tags' grouping
+      \1    if (groupBy === 'tags') {
+      \1        v = me.extractGrpTag(v); // Extract the 'grp' tag
+      \1    }
+
+      \1    if (v) {
+      \1        // If 'v' is an array, process each element
+      \1        if (Array.isArray(v)) {
+      \1            v.forEach(function (value) {
+      \1                me.processGroupChild(node, info, groupBy, value, groups, level);
+      \1            });
+      \1        } else {
+      \1            // If 'v' is not an array, just process it directly
+      \1            me.processGroupChild(node, info, groupBy, v, groups, level);
+      \1        }
+      \1    } else {
+      \1        return me.addChildSorted(node, info);
+      \1    }
+      \1},
+
+      \1processGroupChild: function (node, info, groupBy, v, groups, level) {
+      \1    let me = this;
+      \1    let group = node.findChild('groupbyid', v);
+      \1    
+      \1    if (!group) {
+      \1        let groupinfo;
+      \1        if (info.type === groupBy) {
+      \1            groupinfo = info;
+      \1        } else {
+      \1            groupinfo = {
+      \1                type: groupBy,
+      \1                id: groupBy + "/" + v,
+      \1            };
+      \1            if (groupBy !== 'type') {
+      \1                groupinfo[groupBy] = v;
+      \1            }
+      \1        }
+      \1        groupinfo.leaf = false;
+      \1        groupinfo.groupbyid = v;
+      \1        group = me.addChildSorted(node, groupinfo);
+      \1    }
+
+      \1    if (info.type === groupBy) {
+      \1        return group;
+      \1    }
+
+      \1    if (group) {
+      \1        // Clone the info object and modify its ID to avoid duplication
+      \1        let clonedInfo = Ext.apply({}, info); // Clone the info object
+      \1        clonedInfo.id = clonedInfo.id + "_" + v; // Append value to ID to make it unique
+      \1        // Recursively call groupChild with the cloned info
+      \1        return me.groupChild(group, clonedInfo, groups, level + 1);
+      \1    }
+      \1},\2
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Set `Tags View` as the default view in dashboard"
+  replace:
+    path: /usr/share/pve-manager/js/pvemanagerlib.js
+    regexp: "\
+      ([ \\t]*// private\\n\
+      [ \\t]*hslist: \\[\\n\
+      [\\s\\S]*?\
+      \\['view', ')(?:(?!tags).*)('\\],\\n)"
+    replace: " \\1tags\\2"
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Restart `pveproxy` service"
+  service:
+    name: pveproxy
+    state: restarted
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Touching checksum file on successful completion"
+  shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_enable_tags_view_in_dashboard_* && sleep 2 && touch /root/proxmox_automation_install/task_enable_tags_view_in_dashboard_$(date +%Y%m%d-%H%M%S).run.tmp"
+  changed_when: false

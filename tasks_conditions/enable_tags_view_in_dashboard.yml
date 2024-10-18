@@ -1,0 +1,75 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
+    section_name: "`Enable Tags View In Dashboard`"
+    latest_datetime_task: null
+    is_any_file_being_changed_after_run_file: null
+    is_run_file_older_than_any_file_being_changed: false
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Get the latest run file if exits"
+  shell: ls -1r /root/proxmox_automation_install/task_enable_tags_view_in_dashboard_*.run.tmp | head -n 1 | grep -oP "[^_]_\K[0-9]{8}-[0-9]{6}"
+  register: latest_datetime_task
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if latest run file is not older than any files being changed's modification time"
+  shell: "[ $(date -d \"$(echo \"{{ latest_datetime_task.stdout }}\" | sed -E 's/([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})/\\1-\\2-\\3 \\4:\\5:\\6/')\" +%s) -ge $(stat -c %Y \"$(ls -1r /etc/network/interfaces /usr/share/pve-manager/js/pvemanagerlib.js | head -n 1)\") ]"
+  register: is_any_file_being_changed_after_run_file
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: 
+    - latest_datetime_task.rc == 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Set `is_run_file_older_than_any_file_being_changed` based on conditions"
+  set_fact:
+    is_run_file_older_than_any_file_being_changed: true
+  when: (is_any_file_being_changed_after_run_file.skipped is defined and is_any_file_being_changed_after_run_file.skipped)
+        or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if `/etc/pve/datacenter.cfg` exists"
+  stat:
+    path: /etc/pve/datacenter.cfg
+  register: etcPveDatacenterCfg_file_exists
+  changed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Convert `etcPveDatacenterCfg_file_exists` to a boolean value"
+  set_fact:
+    etcPveDatacenterCfg_file_exists: "{{ etcPveDatacenterCfg_file_exists['stat']['exists'] | bool }}"
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Slurp the contents of `/etc/pve/datacenter.cfg`"
+  slurp:
+    src: /etc/pve/datacenter.cfg
+  register: etcPveDatacenterCfg_slurped_file
+  changed_when: false
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - etcPveDatacenterCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Parse the file content to `etcPveDatacenterCfg_content` variable"
+  set_fact:
+    etcPveDatacenterCfg_content: "{{ etcPveDatacenterCfg_slurped_file['content'] | b64decode }}"
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - etcPveDatacenterCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Check if various modules exists in the `etcPveDatacenterCfg_content`"
+  set_fact:
+    # Check if `tag-style: case-sensitive=1` already exists in datacenter.cfg
+    datacenterCfg_tag_style_already_exists: "{{ etcPveDatacenterCfg_content | regex_search('^tag_style:\\s*case-sensitive=1\\s*$', multiline=True) is not none }}"
+    # Check if `tag-style:` tag exists in datacenter.cfg
+    datacenterCfg_tag_style_tag_exists: "{{ etcPveDatacenterCfg_content | regex_search('^tag_style: ', multiline=True) is not none }}"
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - etcPveDatacenterCfg_file_exists
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Set `is_condition_enable_tags_view_in_dashboard` based on conditions"
+  set_fact:
+    is_condition_enable_tags_view_in_dashboard: true
+  when: 
+    - is_run_file_older_than_any_file_being_changed
+    - (not etcPveDatacenterCfg_file_exists) or (not datacenterCfg_tag_style_already_exists)

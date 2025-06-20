@@ -25,14 +25,14 @@
       \\2"
   when: is_vmbr0_modified_in_interfaces.rc != 0
 
-- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr0B_LANnIntrnt`"
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr0B_LANnInt`"
   replace:
     path: /etc/network/interfaces
     regexp: "\
       \\A\
       (?!\
           [\\s\\S]*\
-          auto vmbr0B_LANnIntrnt\
+          auto vmbr0B_LANnInt\
       )\
       (\
           [\\s\\S]*?\
@@ -45,8 +45,8 @@
       )"
     replace: "\
       \\1\n\
-      auto vmbr0B_LANnIntrnt\n\
-      iface vmbr0B_LANnIntrnt inet manual\n\
+      auto vmbr0B_LANnInt\n\
+      iface vmbr0B_LANnInt inet manual\n\
       \tbridge-ports none\n\
       \tbridge-stp off\n\
       \tbridge-fd 0\n\

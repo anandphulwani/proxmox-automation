@@ -40,7 +40,7 @@
   when: is_run_file_older_than_any_file_being_changed
 
 - name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if the specified line exists in `/etc/network/interfaces`"
-  shell: "grep -qPoz -e \"auto vmbr0B_LANnIntrnt\\s*\\niface vmbr0B_LANnIntrnt.*\\n\" /etc/network/interfaces"
+  shell: "grep -qPoz -e \"auto vmbr0B_LANnInt\\s*\\niface vmbr0B_LANnInt.*\\n\" /etc/network/interfaces"
   register: is_vmbr0B_present_in_interfaces
   ignore_errors: yes
   changed_when: false

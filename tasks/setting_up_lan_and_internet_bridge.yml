@@ -42,13 +42,13 @@
     state: present
     insertafter: EOF
 
-- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr0B_LANnIntrnt`"
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr0B_LANnInt`"
   replace:
     path: /etc/network/interfaces
     regexp: "\
       (\
-      auto vmbr0B_LANnIntrnt\\n\
-      iface vmbr0B_LANnIntrnt .*\\n\
+      auto vmbr0B_LANnInt\\n\
+      iface vmbr0B_LANnInt .*\\n\
       )\
       (\
         (?!\taddress )\
@@ -57,8 +57,8 @@
       (\\n\\s*\\n)\
       "
     replace: "\
-      auto vmbr0B_LANnIntrnt\n\
-      iface vmbr0B_LANnIntrnt inet static\n\
+      auto vmbr0B_LANnInt\n\
+      iface vmbr0B_LANnInt inet static\n\
       \taddress {{ default_gateway }}\n\
       \tnetmask {{ subnet_mask }}\n\
       \\2\n\
@@ -66,8 +66,8 @@
       \t# Enabling Internet via NAT MASQUERADE\n\
       \tpost-up echo 1 > /proc/sys/net/ipv4/ip_forward\n\
       \tpost-up iptables -t nat -A POSTROUTING -o vmbr0A_mainbrg -j MASQUERADE\n\
-      \tpost-up iptables -A FORWARD -i vmbr0B_LANnIntrnt -o vmbr0A_mainbrg -j ACCEPT\n\
-      \tpost-up iptables -A FORWARD -i vmbr0A_mainbrg -o vmbr0B_LANnIntrnt -m state --state RELATED,ESTABLISHED -j ACCEPT\n\
+      \tpost-up iptables -A FORWARD -i vmbr0B_LANnInt -o vmbr0A_mainbrg -j ACCEPT\n\
+      \tpost-up iptables -A FORWARD -i vmbr0A_mainbrg -o vmbr0B_LANnInt -m state --state RELATED,ESTABLISHED -j ACCEPT\n\
       \t# Firewall Rules\n\
       \t# Port forwarding sample: Public IP: 10022 -----> Private IP: 22\n\
       \t# post-up iptables -t nat -A POSTROUTING -s '{{ vmbr0B_iprange }}' -o vmbr0A_mainbrg -j MASQUERADE\n\

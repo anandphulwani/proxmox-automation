@@ -239,7 +239,7 @@
               ip="$first_block_ip.$second_block_ip.$part1.$part2$order_no"
           fi
 
-          dhcp_line="dhcp-host=$mac,$ip"
+          dhcp_line="dhcp-host=$mac,$ip,3h"
           new_dhcp_hosts+="$dhcp_line"$'\n'
       done
 

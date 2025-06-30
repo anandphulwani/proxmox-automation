@@ -80,8 +80,7 @@
   copy:
     dest: "/usr/local/bin/dhcp_static_mappings_generator.sh"
     content: |
-      {% raw %}
-      #!/bin/bash
+      {% raw %}#!/bin/bash
 
       # This script updates the DHCP static lease entries in `/etc/dnsmasq.conf` for Proxmox virtual machines (VMs)
       # whose configurations have changed since the last update of the `dnsmasq` configuration.

@@ -233,6 +233,11 @@
       for entry in "${entries[@]}"; do
           IFS='|' read -r net_num_only mac part1 part2 order_no <<< "$entry"
 
+          # skip cards beyond the 9th
+          if (( order_no > 9 )); then
+              continue
+          fi
+
           if [[ "$subnet_prefix" == "8" ]]; then
               ip="$first_block_ip.$part1.$part2.$order_no"
           else

@@ -168,6 +168,7 @@
         fi
 
         # Step 04: Initialize associative array and entries list
+        unset mac_addresses
         declare -A mac_addresses
         entries=()
         # echo "Initialized mac_addresses map and entries array."

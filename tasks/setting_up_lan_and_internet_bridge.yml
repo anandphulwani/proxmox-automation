@@ -134,6 +134,7 @@
           exit 1
       fi
       ip_ranges_with_subnet_prefix="$1"
+      # echo "Input argument: $ip_ranges_with_subnet_prefix"
 
       # Validate the input
       if [[ "$ip_ranges_with_subnet_prefix" != "10.0.0.0/8" && "$ip_ranges_with_subnet_prefix" != "172.16.0.0/16" && "$ip_ranges_with_subnet_prefix" != "192.168.0.0/16" ]]; then
@@ -145,11 +146,16 @@
       IFS='/' read -r ip_range subnet_prefix <<< "$ip_ranges_with_subnet_prefix"
       IFS='.' read -r first_block_ip second_block_ip _ _ <<< "$ip_range"
       
+      # echo "Parsed IP range: $ip_range, Subnet prefix: $subnet_prefix"
+      # echo "First block IP: $first_block_ip, Second block IP: $second_block_ip"
+
       while true; do
         # Step 02: Find VM configuration files newer than /etc/dnsmasq.conf
         changed_files=( $(find -L /etc/pve/qemu-server -type f -name '*.conf' -newer /etc/dnsmasq.conf | sort) )
+        # echo "Found ${#changed_files[@]} changed configuration files."
 
         if [ ${#changed_files[@]} -eq 0 ]; then
+            # echo "No updated config files found. Sleeping for 10 seconds..."
             sleep 10
             continue
         fi
@@ -164,11 +170,14 @@
         # Step 04: Initialize associative array and entries list
         declare -A mac_addresses
         entries=()
+        # echo "Initialized mac_addresses map and entries array."
 
         # Step 05: Process each changed VM configuration file
         for conf_file in "${changed_files[@]}"; do
+            # echo "Processing file: $conf_file"
             order_no=1
             vmid=$(basename "$conf_file" .conf)
+            # echo "VMID: $vmid"
 
             # Extract digits from VMID based on subnet prefix
             if [[ "$subnet_prefix" == "8" ]]; then
@@ -178,9 +187,12 @@
                 part1=${vmid:0:2}
                 part2=${vmid:2}
             fi
+            # echo "Part1: $part1, Part2: $part2"
 
             # Use grep to extract all matching lines, and then sort them
             matching_lines=$(grep -E '^net[0-9]{1,4}:[^=]*=\s*([^,]*),.*' "$conf_file" | sort)
+            # echo "Matching lines from $conf_file:"
+            # echo "$matching_lines"
 
             # Filter out duplicates by MAC address first
             unique_lines=()
@@ -192,6 +204,7 @@
                     if [[ -n "$mac" && -z "${mac_addresses[$mac]}" ]]; then
                         mac_addresses["$mac"]=1
                         unique_lines+=("$line")
+                        # echo "Added unique MAC: $mac from line: $line"
                     fi
                 fi
             done <<< "$matching_lines"
@@ -204,6 +217,7 @@
                     net_num_only="${net_number#net}"
 
                     entries+=("$net_num_only|$mac|$part1|$part2|$order_no|$vmid")
+                    # echo "Generated entry: net_num=$net_num_only, mac=$mac, order_no=$order_no, vmid=$vmid"
                     ((order_no++))
                 fi
             done
@@ -212,6 +226,7 @@
         # Step 06: Modify /etc/dnsmasq.conf to remove old static leases for each changed VM
         for conf_file in "${changed_files[@]}"; do
             vmid=$(basename "$conf_file" .conf)
+            # echo "Removing old static leases for VMID: $vmid"
             sed -i '/# DHCP Static leases/,/^[[:space:]]*$/ {
                 /# vmid:'"${vmid}"'/d
             }' /etc/dnsmasq.conf
@@ -224,6 +239,7 @@
             
             # skip cards beyond the 9th
             if (( order_no > 9 )); then
+                # echo "Skipping card $order_no for MAC $mac"
                 continue
             fi
 
@@ -235,9 +251,11 @@
 
             dhcp_line="dhcp-host=$mac,$ip,3h # vmid:$vmid"
             new_dhcp_hosts+=$'\n'"$dhcp_line"
+            # echo "Generated DHCP line: $dhcp_line"
         done
 
         # Step 08: Insert the new DHCP entries into /etc/dnsmasq.conf
+        # echo "Updating /etc/dnsmasq.conf with new static leases..."
         perl -0777 -pi -e 's/(?:(?:(?:[ \t\n]*)# DHCP Static leases)([\s\S]*?))?(?:[ \t\n]*)(\n\n\# Always allocate the host with Ethernet address (?:[A-Fa-f0-9]{2}:?){6}\n# The IP address (?:\d{1,3}\.?){4})/\n\n# DHCP Static leases$1'"$new_dhcp_hosts"'$2/s' /etc/dnsmasq.conf
         
         # Step 09: Restarting networking and dnsmasq
@@ -253,6 +271,7 @@
             /etc/init.d/dnsmasq restart
         fi
 
+        # echo "Sleeping 10 seconds before next check..."
         sleep 10
       done
       {% endraw %}

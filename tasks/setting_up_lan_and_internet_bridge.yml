@@ -63,10 +63,6 @@
       \tnetmask {{ subnet_mask }}\n\
       \\2\n\
       \t# LAN and Internet connection\n\
-      \t# Enabling Internet via NAT MASQUERADE\n\
-      \tpost-up iptables -t nat -A POSTROUTING -o vmbr0A_mainbrg -j MASQUERADE\n\
-      \tpost-up iptables -A FORWARD -i vmbr0B_LANnInt -o vmbr0A_mainbrg -j ACCEPT\n\
-      \tpost-up iptables -A FORWARD -i vmbr0A_mainbrg -o vmbr0B_LANnInt -m state --state RELATED,ESTABLISHED -j ACCEPT\n\
       \\3"
 
 - name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Create `dhcp_static_mappings_generator.sh` file and append content to it"
@@ -344,9 +340,11 @@
     mode: '0644'
     content: |
       flush ruleset
+
       table ip nat {
         chain prerouting {
           type nat hook prerouting priority -100;
+
           {% set ip_blocks = vmbr0B_iprange.split('.') %}
           {% set subnet_prefix = vmbr0B_iprange.split('/')[1] %}
           {% set first_block = ip_blocks[0]|int %}
@@ -383,7 +381,20 @@
 
         chain postrouting {
           type nat hook postrouting priority 100;
-          masquerade
+          oifname "vmbr0A_mainbrg" masquerade
+        }
+      }
+
+      table ip filter {
+        chain forward {
+          type filter hook forward priority 0;
+          policy drop;
+
+          # Allow LAN to Internet
+          iifname "vmbr0B_LANnInt" oifname "vmbr0A_mainbrg" accept
+
+          # Allow returning traffic from Internet to LAN
+          iifname "vmbr0A_mainbrg" oifname "vmbr0B_LANnInt" ct state related,established accept
         }
       }
 

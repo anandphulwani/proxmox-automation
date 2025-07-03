@@ -188,8 +188,7 @@
                 part1=${vmid:0:2}
                 part2=${vmid:2}
             fi
-            # echo "Part1: $part1, Part2: $part2"
-
+            
             # Use grep to extract all matching lines, and then sort them
             matching_lines=$(grep -E '^net[0-9]{1,4}:[^=]*=\s*([^,]*),.*' "$conf_file" | sort)
             # echo "Matching lines from $conf_file:"
@@ -244,10 +243,17 @@
                 continue
             fi
 
+            # Strip leading zeros safely (00 becomes 0, 01 becomes 1, etc.)
+            part1=$((10#$part1))
             if [[ "$subnet_prefix" == "8" ]]; then
+                # Strip leading zeros safely (00 becomes 0, 01 becomes 1, etc.)
+                part2=$((10#$part2))
+                order_no=$((10#$order_no))
                 ip="$first_block_ip.$part1.$part2.$order_no"
             else
-                ip="$first_block_ip.$second_block_ip.$part1.$part2$order_no"
+                # Strip leading zeros safely (00 becomes 0, 01 becomes 1, etc.)
+                part2=$((10#$part2$order_no))
+                ip="$first_block_ip.$second_block_ip.$part1.$part2"
             fi
 
             dhcp_line="dhcp-host=$mac,$ip,3h # vmid:$vmid"

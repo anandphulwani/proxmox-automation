@@ -330,11 +330,17 @@
     name: networking
     state: restarted
 
-- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Touching checksum file on successful completion"
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Enable and start `nftables` service"
+  systemd:
+    name: nftables
+    enabled: yes
+    state: started
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Touching checksum file on successful completion"
   shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_* && sleep 2 && touch /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_$(date +%Y%m%d-%H%M%S).run.tmp"
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
   reboot:
     msg: "Reboot initiated by Ansible for networking `interface` and dnsmasq server installation changes"
     reboot_timeout: 600

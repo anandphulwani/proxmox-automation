@@ -64,7 +64,6 @@
       \\2\n\
       \t# LAN and Internet connection\n\
       \t# Enabling Internet via NAT MASQUERADE\n\
-      \tpost-up echo 1 > /proc/sys/net/ipv4/ip_forward\n\
       \tpost-up iptables -t nat -A POSTROUTING -o vmbr0A_mainbrg -j MASQUERADE\n\
       \tpost-up iptables -A FORWARD -i vmbr0B_LANnInt -o vmbr0A_mainbrg -j ACCEPT\n\
       \tpost-up iptables -A FORWARD -i vmbr0A_mainbrg -o vmbr0B_LANnInt -m state --state RELATED,ESTABLISHED -j ACCEPT\n\
@@ -330,7 +329,14 @@
     enabled: yes
     state: started
 
-- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Deploy nftables config with port forwarding rules"
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Enable IPv4 forwarding"
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    reload: yes
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Deploy nftables config with port forwarding rules"
   copy:
     dest: /etc/nftables.conf
     owner: root
@@ -381,14 +387,14 @@
         }
       }
 
-- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Reload nftables to apply new rules"
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Reload nftables to apply new rules"
   command: nft -f /etc/nftables.conf
 
-- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Touching checksum file on successful completion"
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Touching checksum file on successful completion"
   shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_* && sleep 2 && touch /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_$(date +%Y%m%d-%H%M%S).run.tmp"
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
   reboot:
     msg: "Reboot initiated by Ansible for networking `interface` and dnsmasq server installation changes"
     reboot_timeout: 600

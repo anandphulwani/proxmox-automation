@@ -188,6 +188,10 @@
                 part1=${vmid:0:2}
                 part2=${vmid:2}
             fi
+            
+            # Strip leading zeros safely (00 becomes 0, 01 becomes 1, etc.)
+            part1=$((10#$part1))
+            part2=$((10#$part2))
             # echo "Part1: $part1, Part2: $part2"
 
             # Use grep to extract all matching lines, and then sort them

@@ -10,6 +10,7 @@
       - cron
       - dnsmasq
       - perl
+      - nftables
     package_check_results: null
     missing_packages: []
     vmbr0B_iprange: null

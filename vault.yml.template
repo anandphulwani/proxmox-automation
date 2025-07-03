@@ -1,11 +1,11 @@
 precalculated_post_pve_install_sh_sha1_checksum: "8e150ec5c8257e12711d5253babe3b90e216416a" # Checksum of current `post_pve_install.sh` from the online git repo.
-ssh_port_new: <<ssh_port_new>> # any port between 1024-49151 not used by any other application, safe to use port about 10000
+ssh_port_new: <<ssh_port_new>> # any port between 1024-49151 not used by any other application, safe to use port from 10000 - 19999
 ssh_local_public_key_path: "<<ssh_local_public_key_path>>" # Usual value: "Put the `.pub` file path here"
 ssh_remote_public_key_path: "<<ssh_remote_public_key_path>>" # Usual value: "/root/.ssh/authorized_keys"
 timezone: "<<timezone>>" # Usual value: "Asia/Kolkata"
 hostname: "<<hostname>>"
 webgui_port_old: <<webgui_port_old>> # Usual value: 8006
-webgui_port_new: <<webgui_port_new>> # any port between 1024-49151 not used by any other application, safe to use port about 10000
+webgui_port_new: <<webgui_port_new>> # any port between 1024-49151 not used by any other application, safe to use port from 10000 - 19999
 email_from: "<<email_from>>"
 email_to: "<<email_to>>"
 email_from_password: "<<email_from_password>>"

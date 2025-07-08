@@ -345,8 +345,8 @@
         chain prerouting {
           type nat hook prerouting priority -100;
 
-          {% set ip_blocks = vmbr0B_iprange.split('.') %}
-          {% set subnet_prefix = vmbr0B_iprange.split('/')[1] %}
+          {% set ip_base, subnet_prefix = vmbr0B_iprange.split('/') %}
+          {% set ip_blocks = ip_base.split('.') %}
           {% set first_block = ip_blocks[0]|int %}
           {% set second_block = ip_blocks[1]|int if subnet_prefix != '8' else None %}
 

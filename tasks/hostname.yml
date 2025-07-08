@@ -69,3 +69,8 @@
   fail:
     msg: "Unable to set `hostname` to {{ hostname }}."
   when: current_hostname != hostname
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Reboot the server"
+  reboot:
+    msg: "Reboot initiated by `Hostname.yml`"
+    reboot_timeout: 600

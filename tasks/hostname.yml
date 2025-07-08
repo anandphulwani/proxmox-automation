@@ -104,3 +104,24 @@
     executable: /bin/bash
   register: archive_old_node_dir
   failed_when: archive_old_node_dir.rc != 0
+
+- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Check if /etc/mdadm/mdadm.conf exists"
+  stat:
+    path: /etc/mdadm/mdadm.conf
+  register: mdadm_conf_file
+
+- name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Check if old hostname followed by ':' exists in mdadm.conf"
+  shell: grep -q "{{ old_hostname_from_hostname_command.stdout }}:" /etc/mdadm/mdadm.conf
+  register: old_hostname_in_mdadm
+  failed_when: false
+  changed_when: false
+  when: mdadm_conf_file.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Replace old hostname: with new hostname: in mdadm.conf"
+  replace:
+    path: /etc/mdadm/mdadm.conf
+    regexp: '\b{{ old_hostname_from_hostname_command.stdout }}:'
+    replace: '{{ hostname }}:'
+  when:
+    - mdadm_conf_file.stat.exists
+    - old_hostname_in_mdadm.rc == 0

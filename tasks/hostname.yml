@@ -74,3 +74,33 @@
   reboot:
     msg: "Reboot initiated by `Hostname.yml`"
     reboot_timeout: 600
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Check if folder with new hostname exists in /etc/pve/nodes"
+  stat:
+    path: "/etc/pve/nodes/{{ hostname }}"
+  register: new_hostname_node_dir
+
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Fail if new hostname folder not found in /etc/pve/nodes"
+  fail:
+    msg: "New hostname folder `/etc/pve/nodes/{{ hostname }}` not found."
+  when: not new_hostname_node_dir.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Check if folder with old hostname exists in /etc/pve/nodes"
+  stat:
+    path: "/etc/pve/nodes/{{ old_hostname_from_hostname_command.stdout }}"
+  register: old_hostname_node_dir
+
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Fail if old hostname folder not found in /etc/pve/nodes"
+  fail:
+    msg: "Old hostname folder `/etc/pve/nodes/{{ old_hostname_from_hostname_command.stdout }}` not found."
+  when: not old_hostname_node_dir.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Archive old hostname folder and move to backup"
+  shell: |
+    mkdir -p /root/proxmox_automation_install/backups/etc/pve/nodes/
+    tar czf /root/proxmox_automation_install/backups/etc/pve/nodes/{{ old_hostname_from_hostname_command.stdout }}_$(date +%Y%m%d-%H%M%S).tar.gz -C /etc/pve/nodes {{ old_hostname_from_hostname_command.stdout }}
+    rm -rf /etc/pve/nodes/{{ old_hostname_from_hostname_command.stdout }}
+  args:
+    executable: /bin/bash
+  register: archive_old_node_dir
+  failed_when: archive_old_node_dir.rc != 0

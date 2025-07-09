@@ -401,7 +401,7 @@
               # DMZ catch-all: forward all other TCP ports except Proxmox-reserved ones
               meta l4proto tcp dnat to {{ dmz_ip }}
           
-               Optional: forward all other UDP ports to DMZ (excluding NTP for example)
+              # Optional: forward all other UDP ports to DMZ (excluding NTP for example)
               udp dport != 123 dnat to {{ dmz_ip }}
 
         }

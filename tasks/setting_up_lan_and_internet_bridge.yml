@@ -350,19 +350,19 @@
           {% set first_block = ip_blocks[0]|int %}
           {% set second_block = ip_blocks[1]|int if subnet_prefix != '8' else None %}
 
-              # --- Protect critical Proxmox ports from accidental DNAT ---
-              tcp dport {{ ssh_port_new }} accept          # SSH
-              tcp dport 443 accept          # HTTPS (API access, GUI)
-              tcp dport {{ webgui_port_new }} accept          # Proxmox Web GUI
-              tcp dport 8007 accept          # Proxmox Backup Server
-              tcp dport 3128 accept          # NoVNC proxy
-              tcp dport 3129 accept          # SPICE proxy (optional)
-              tcp dport 5900-5999 accept          # VNC/SPICE consoles
+                    # --- Protect critical Proxmox ports from accidental DNAT ---
+                    tcp dport {{ ssh_port_new }} accept          # SSH
+                    tcp dport 443 accept          # HTTPS (API access, GUI)
+                    tcp dport {{ webgui_port_new }} accept          # Proxmox Web GUI
+                    tcp dport 8007 accept          # Proxmox Backup Server
+                    tcp dport 3128 accept          # NoVNC proxy
+                    tcp dport 3129 accept          # SPICE proxy (optional)
+                    tcp dport 5900-5999 accept          # VNC/SPICE consoles
 
-              udp dport 67 accept          # DHCP server (bootps)
-              udp sport 67 accept          # DHCP replies from server
-              udp dport 68 accept          # DHCP client (bootpc)
-              udp sport 68 accept          # DHCP requests from client
+                    udp dport 67 accept          # DHCP server (bootps)
+                    udp sport 67 accept          # DHCP replies from server
+                    udp dport 68 accept          # DHCP client (bootpc)
+                    udp sport 68 accept          # DHCP requests from client
 
           {% for id in range(100, 1000) %}
             {% set id_str = "%03d"|format(id) %}
@@ -375,7 +375,6 @@
               {% set part2 = id_str[2]|int %}
               {% set ip = "%d.%d.%d.%d" % (first_block, second_block, part1, (id_str[2] + "1") | int) %}
             {% endif %}
-
             {% set rules = {
               8000: 80,
               21000: 21,
@@ -391,19 +390,17 @@
               tcp dport {{ offset + id }} dnat to {{ ip }}:{{ target_port }}
             {% endfor %}
           {% endfor %}
-
           {% if subnet_prefix == '8' %}
             {% set dmz_ip = "%d.255.255.254" % (ip_blocks[0] | int) %}
           {% elif subnet_prefix == '16' %}
             {% set dmz_ip = "%d.%d.255.254" % (ip_blocks[0] | int, ip_blocks[1] | int) %}
           {% endif %}
-          
-              # DMZ catch-all: forward all other TCP ports except Proxmox-reserved ones
-              meta l4proto tcp dnat to {{ dmz_ip }}
-          
-              # Optional: forward all other UDP ports to DMZ (excluding NTP for example)
-              udp dport != 123 dnat to {{ dmz_ip }}
 
+                    # DMZ catch-all: forward all other TCP ports except Proxmox-reserved ones
+                    meta l4proto tcp dnat to {{ dmz_ip }}
+          
+                    # Optional: forward all other UDP ports to DMZ (excluding NTP for example)
+                    udp dport != 123 dnat to {{ dmz_ip }}
         }
 
         chain postrouting {

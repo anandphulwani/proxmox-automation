@@ -25,6 +25,7 @@
     dhcp_range_present: null
     default_gateway_present: null
     dns_servers_present: null
+    filtered_ips: []
   changed_when: false
 
 - name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Filter out already installed packages"
@@ -95,14 +96,22 @@
   when: (is_any_file_being_changed_after_run_file.skipped is defined and is_any_file_being_changed_after_run_file.skipped)
         or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
 
-- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Determine vmbr0B_iprange using the assigned IP address"
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Collect each IP except `lo` and `vmbr0B_LANnInt`"
   set_fact:
-    vmbr0B_iprange: "{{ '10.0.0.0/8' if ansible_all_ipv4_addresses | map('regex_search', '^192\\.168\\.0\\.\\d+$') | select | list | length > 0 else
-          '172.16.0.0/16' if ansible_all_ipv4_addresses | map('regex_search', '^10\\.\\d+\\.\\d+\\.\\d+$') | select | list | length > 0 else
+    filtered_ips: "{{ filtered_ips + [ ansible_facts[item].ipv4.address ] }}"
+  when:
+    - item not in ['lo','vmbr0B_LANnInt']
+    - ansible_facts[item].ipv4 is defined
+  loop: "{{ ansible_interfaces }}"
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Determine vmbr0B_iprange using the assigned IP address"
+  set_fact:
+    vmbr0B_iprange: "{{ '10.0.0.0/8' if filtered_ips | map('regex_search', '^192\\.168\\.0\\.\\d+$') | select | list | length > 0 else
+          '172.16.0.0/16' if filtered_ips | map('regex_search', '^10\\.\\d+\\.\\d+\\.\\d+$') | select | list | length > 0 else
           '192.168.0.0/16' }}"
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Set DHCP related variables"
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Set DHCP related variables"
   set_fact:
     dhcp_range_from: "{{ '10.255.255.100' if vmbr0B_iprange == '10.0.0.0/8' else ('172.31.255.100' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.255.100') }}"
     dhcp_range_to: "{{ '10.255.255.250' if vmbr0B_iprange == '10.0.0.0/8' else ('172.31.255.250' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.255.250') }}"
@@ -114,7 +123,7 @@
     sample_client_ip: "{{ '10.0.0.2' if vmbr0B_iprange == '10.0.0.0/8' else ('172.16.0.2' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.0.2') }}"
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},6h' /etc/dnsmasq.conf
   register: dhcp_range_present
   ignore_errors: yes
@@ -122,7 +131,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Check if any `default gateway` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check if any `default gateway` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-option=3,{{ default_gateway }}' /etc/dnsmasq.conf
   register: default_gateway_present
   ignore_errors: yes
@@ -130,7 +139,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check if any `DNS servers` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Check if any `DNS servers` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-option=6,{{ dns_server_01 }},{{ dns_server_02 }}' /etc/dnsmasq.conf
   register: dns_servers_present
   ignore_errors: yes
@@ -138,7 +147,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Set `is_condition_setting_up_lan_and_internet_bridge` based on conditions"
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Set `is_condition_setting_up_lan_and_internet_bridge` based on conditions"
   set_fact:
     is_condition_setting_up_lan_and_internet_bridge: true
   when: 

@@ -140,7 +140,11 @@
 
       while true; do
         # Step 02: Find VM configuration files newer than /etc/dnsmasq.conf
-        changed_files=( $(find -L /etc/pve/qemu-server -type f -name '*.conf' -newer /etc/dnsmasq.conf | sort) )
+        changed_files=(
+            $(find -L /etc/pve/qemu-server -type f -name '*.conf' -newer /etc/dnsmasq.conf)
+            $(find -L /etc/pve/lxc -type f -name '*.conf' -newer /etc/dnsmasq.conf)
+        )
+
         # echo "Found ${#changed_files[@]} changed configuration files."
 
         if [ ${#changed_files[@]} -eq 0 ]; then
@@ -179,30 +183,42 @@
             fi
             
             # Use grep to extract all matching lines, and then sort them
-            matching_lines=$(grep -E '^net[0-9]{1,4}:[^=]*=\s*([^,]*),.*' "$conf_file" | sort)
+            if [[ "$conf_file" == /etc/pve/qemu-server/* ]]; then
+                # VM config format
+                matching_lines=$(grep -E '^net[0-9]{1,4}:[^=]*=\s*([^,]*),.*' "$conf_file" | sort)
+            elif [[ "$conf_file" == /etc/pve/lxc/* ]]; then
+                # LXC config format (e.g. hwaddr=...)
+                matching_lines=$(grep -E '^net[0-9]{1,4}:' "$conf_file" | grep -i 'hwaddr=' | sort)
+            fi
             # echo "Matching lines from $conf_file:"
             # echo "$matching_lines"
 
             # Filter out duplicates by MAC address first
             unique_lines=()
             while IFS= read -r line; do
-                if [[ $line =~ ^(net[0-9]{1,4}):[^=]*=\s*([^,]*),.* ]]; then
-                    mac="${BASH_REMATCH[2]}"
+                if [[ "$line" =~ hwaddr=([A-Fa-f0-9:]{17}) ]]; then
+                    mac="${BASH_REMATCH[1]}"
+                elif [[ "$line" =~ ^net[0-9]{1,4}:[^=]*=\s*([^,]*),.* ]]; then
+                    mac="${BASH_REMATCH[1]}"
+                fi
 
-                    # Only process unique MAC addresses
-                    if [[ -n "$mac" && -z "${mac_addresses[$mac]}" ]]; then
-                        mac_addresses["$mac"]=1
-                        unique_lines+=("$line")
-                        # echo "Added unique MAC: $mac from line: $line"
-                    fi
+                # Only process unique MAC addresses
+                if [[ -n "$mac" && -z "${mac_addresses[$mac]}" ]]; then
+                    mac_addresses["$mac"]=1
+                    unique_lines+=("$line")
+                    # echo "Added unique MAC: $mac from line: $line"
                 fi
             done <<< "$matching_lines"
 
             # Process the unique lines
             for line in "${unique_lines[@]}"; do
-                if [[ $line =~ ^(net[0-9]{1,4}):[^=]*=\s*([^,]*),.* ]]; then
+                if [[ "$line" =~ ^(net[0-9]{1,4}): ]]; then
                     net_number="${BASH_REMATCH[1]}"
-                    mac="${BASH_REMATCH[2]}"
+                    if [[ "$line" =~ hwaddr=([A-Fa-f0-9:]{17}) ]]; then
+                        mac="${BASH_REMATCH[1]}"
+                    elif [[ "$line" =~ ^net[0-9]{1,4}:[^=]*=\s*([^,]*),.* ]]; then
+                        mac="${BASH_REMATCH[1]}"
+                    fi
                     net_num_only="${net_number#net}"
 
                     entries+=("$net_num_only|$mac|$part1|$part2|$order_no|$vmid")

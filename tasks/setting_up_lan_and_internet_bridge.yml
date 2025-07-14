@@ -42,13 +42,13 @@
     state: present
     insertafter: EOF
 
-- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr0B_LANnInt`"
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr1_LANnInt`"
   replace:
     path: /etc/network/interfaces
     regexp: "\
       (\
-      auto vmbr0B_LANnInt\\n\
-      iface vmbr0B_LANnInt .*\\n\
+      auto vmbr1_LANnInt\\n\
+      iface vmbr1_LANnInt .*\\n\
       )\
       (\
         (?!\taddress )\
@@ -57,8 +57,8 @@
       (\\n\\s*\\n)\
       "
     replace: "\
-      auto vmbr0B_LANnInt\n\
-      iface vmbr0B_LANnInt inet static\n\
+      auto vmbr1_LANnInt\n\
+      iface vmbr1_LANnInt inet static\n\
       \taddress {{ default_gateway }}\n\
       \tnetmask {{ subnet_mask }}\n\
       \\2\n\
@@ -310,7 +310,7 @@
 
       [Service]
       Type=oneshot
-      ExecStart=/usr/local/bin/dhcp_static_mappings_generator.sh '{{ vmbr0B_iprange }}'
+      ExecStart=/usr/local/bin/dhcp_static_mappings_generator.sh '{{ vmbr1_iprange }}'
       StandardOutput=append:/var/log/dhcp_static_mappings_generator.log
       StandardError=append:/var/log/dhcp_static_mappings_generator.log
 
@@ -361,7 +361,7 @@
         chain prerouting {
           type nat hook prerouting priority -100;
 
-          {% set ip_base, subnet_prefix = vmbr0B_iprange.split('/') %}
+          {% set ip_base, subnet_prefix = vmbr1_iprange.split('/') %}
           {% set ip_blocks = ip_base.split('.') %}
           {% set first_block = ip_blocks[0]|int %}
           {% set second_block = ip_blocks[1]|int if subnet_prefix != '8' else None %}
@@ -433,13 +433,13 @@
           policy drop;
 
           # Allow LAN to Internet
-          iifname "vmbr0B_LANnInt" oifname "vmbr0_mainbrg" accept
+          iifname "vmbr1_LANnInt" oifname "vmbr0_mainbrg" accept
 
           # Allow returning traffic from Internet to LAN
-          iifname "vmbr0_mainbrg" oifname "vmbr0B_LANnInt" ct state related,established accept
+          iifname "vmbr0_mainbrg" oifname "vmbr1_LANnInt" ct state related,established accept
 
           # Allow incoming DNAT connections from WAN to LAN
-          iifname "vmbr0_mainbrg" oifname "vmbr0B_LANnInt" ct state new,related,established accept
+          iifname "vmbr0_mainbrg" oifname "vmbr1_LANnInt" ct state new,related,established accept
         }
       }
 
@@ -456,4 +456,4 @@
     reboot_timeout: 600
   when: 
     - is_condition_post_completion_tasks_and_cleanup is not defined
-    - is_vmbr0_modified_in_interfaces.rc != 0 or is_vmbr0B_present_in_interfaces.rc != 0
+    - is_vmbr0_modified_in_interfaces.rc != 0 or is_vmbr1_present_in_interfaces.rc != 0

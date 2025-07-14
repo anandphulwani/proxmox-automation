@@ -6,7 +6,7 @@
     is_any_file_being_changed_after_run_file: null
     is_run_file_older_than_any_file_being_changed: false
     is_vmbr0_modified_in_interfaces: null
-    is_vmbr0B_present_in_interfaces: null
+    is_vmbr1_present_in_interfaces: null
   changed_when: false
 
 - name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Get the latest run file if exits"
@@ -40,8 +40,8 @@
   when: is_run_file_older_than_any_file_being_changed
 
 - name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check if the specified line exists in `/etc/network/interfaces`"
-  shell: "grep -qPoz -e \"auto vmbr0B_LANnInt\\s*\\niface vmbr0B_LANnInt.*\\n\" /etc/network/interfaces"
-  register: is_vmbr0B_present_in_interfaces
+  shell: "grep -qPoz -e \"auto vmbr1_LANnInt\\s*\\niface vmbr1_LANnInt.*\\n\" /etc/network/interfaces"
+  register: is_vmbr1_present_in_interfaces
   ignore_errors: yes
   changed_when: false
   failed_when: false

@@ -13,7 +13,7 @@
       - nftables
     package_check_results: null
     missing_packages: []
-    vmbr0B_iprange: null
+    vmbr1_iprange: null
     dhcp_range_from: null
     dhcp_range_to: null
     default_gateway: null
@@ -96,31 +96,31 @@
   when: (is_any_file_being_changed_after_run_file.skipped is defined and is_any_file_being_changed_after_run_file.skipped)
         or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
 
-- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Collect each IP except `lo` and `vmbr0B_LANnInt`"
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Collect each IP except `lo` and `vmbr1_LANnInt`"
   set_fact:
     filtered_ips: "{{ filtered_ips + [ ansible_facts[item].ipv4.address ] }}"
   when:
-    - item not in ['lo','vmbr0B_LANnInt']
+    - item not in ['lo','vmbr1_LANnInt']
     - ansible_facts[item].ipv4 is defined
   loop: "{{ ansible_interfaces }}"
 
-- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Determine vmbr0B_iprange using the assigned IP address"
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Determine vmbr1_iprange using the assigned IP address"
   set_fact:
-    vmbr0B_iprange: "{{ '10.0.0.0/8' if filtered_ips | map('regex_search', '^192\\.168\\.0\\.\\d+$') | select | list | length > 0 else
+    vmbr1_iprange: "{{ '10.0.0.0/8' if filtered_ips | map('regex_search', '^192\\.168\\.0\\.\\d+$') | select | list | length > 0 else
           '172.16.0.0/16' if filtered_ips | map('regex_search', '^10\\.\\d+\\.\\d+\\.\\d+$') | select | list | length > 0 else
           '192.168.0.0/16' }}"
   when: is_run_file_older_than_any_file_being_changed
 
 - name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Set DHCP related variables"
   set_fact:
-    dhcp_range_from: "{{ '10.255.255.100' if vmbr0B_iprange == '10.0.0.0/8' else ('172.31.255.100' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.255.100') }}"
-    dhcp_range_to: "{{ '10.255.255.250' if vmbr0B_iprange == '10.0.0.0/8' else ('172.31.255.250' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.255.250') }}"
-    default_gateway: "{{ '10.0.0.1' if vmbr0B_iprange == '10.0.0.0/8' else ('172.16.0.1' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.0.1') }}"
-    subnet_mask: "{{ '255.0.0.0' if vmbr0B_iprange == '10.0.0.0/8' else '255.255.0.0' }}"
+    dhcp_range_from: "{{ '10.255.255.100' if vmbr1_iprange == '10.0.0.0/8' else ('172.31.255.100' if vmbr1_iprange == '172.16.0.0/16' else '192.168.255.100') }}"
+    dhcp_range_to: "{{ '10.255.255.250' if vmbr1_iprange == '10.0.0.0/8' else ('172.31.255.250' if vmbr1_iprange == '172.16.0.0/16' else '192.168.255.250') }}"
+    default_gateway: "{{ '10.0.0.1' if vmbr1_iprange == '10.0.0.0/8' else ('172.16.0.1' if vmbr1_iprange == '172.16.0.0/16' else '192.168.0.1') }}"
+    subnet_mask: "{{ '255.0.0.0' if vmbr1_iprange == '10.0.0.0/8' else '255.255.0.0' }}"
     subnet_mask_octet: "{{ {'255.0.0.0': 8, '255.255.0.0': 16, '255.255.255.0': 24}.get(subnet_mask, 0) }}"
     dns_server_01: "8.8.4.4"
     dns_server_02: "1.1.1.1"
-    sample_client_ip: "{{ '10.0.0.2' if vmbr0B_iprange == '10.0.0.0/8' else ('172.16.0.2' if vmbr0B_iprange == '172.16.0.0/16' else '192.168.0.2') }}"
+    sample_client_ip: "{{ '10.0.0.2' if vmbr1_iprange == '10.0.0.0/8' else ('172.16.0.2' if vmbr1_iprange == '172.16.0.0/16' else '192.168.0.2') }}"
   when: is_run_file_older_than_any_file_being_changed
 
 - name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"

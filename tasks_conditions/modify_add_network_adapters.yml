@@ -32,7 +32,7 @@
         or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
 
 - name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if the specified line exists in `/etc/network/interfaces`"
-  shell: "grep -qPoz -e \"auto vmbr0A_mainbrg\\s*\\niface vmbr0A_mainbrg.*\\n\" /etc/network/interfaces"
+  shell: "grep -qPoz -e \"auto vmbr0_mainbrg\\s*\\niface vmbr0_mainbrg.*\\n\" /etc/network/interfaces"
   register: is_vmbr0_modified_in_interfaces
   ignore_errors: yes
   changed_when: false

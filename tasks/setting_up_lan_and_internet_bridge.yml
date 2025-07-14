@@ -423,7 +423,7 @@
 
         chain postrouting {
           type nat hook postrouting priority 100;
-          oifname "vmbr0A_mainbrg" masquerade
+          oifname "vmbr0_mainbrg" masquerade
         }
       }
 
@@ -433,13 +433,13 @@
           policy drop;
 
           # Allow LAN to Internet
-          iifname "vmbr0B_LANnInt" oifname "vmbr0A_mainbrg" accept
+          iifname "vmbr0B_LANnInt" oifname "vmbr0_mainbrg" accept
 
           # Allow returning traffic from Internet to LAN
-          iifname "vmbr0A_mainbrg" oifname "vmbr0B_LANnInt" ct state related,established accept
+          iifname "vmbr0_mainbrg" oifname "vmbr0B_LANnInt" ct state related,established accept
 
           # Allow incoming DNAT connections from WAN to LAN
-          iifname "vmbr0A_mainbrg" oifname "vmbr0B_LANnInt" ct state new,related,established accept
+          iifname "vmbr0_mainbrg" oifname "vmbr0B_LANnInt" ct state new,related,established accept
         }
       }
 

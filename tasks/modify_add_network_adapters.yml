@@ -4,7 +4,7 @@
     section_name: "`Modify Add Network Adapters`"
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Modify `/etc/network/interfaces` to rename `vmbr0` to `vmbr0A_mainbrg`"
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Modify `/etc/network/interfaces` to rename `vmbr0` to `vmbr0_mainbrg`"
   replace:
     path: /etc/network/interfaces
     regexp: "\
@@ -20,8 +20,8 @@
       )"
     replace: "\
       \\1\
-      \nauto vmbr0A_mainbrg\
-      \niface vmbr0A_mainbrg \
+      \nauto vmbr0_mainbrg\
+      \niface vmbr0_mainbrg \
       \\2"
   when: is_vmbr0_modified_in_interfaces.rc != 0
 

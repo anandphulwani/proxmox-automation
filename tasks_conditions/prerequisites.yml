@@ -2,6 +2,8 @@
   set_fact:
     file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
     section_name: "`Prerequisites`"
+    required_public_nameservers: ['8.8.8.8', '4.4.4.4', '1.1.1.1']
+    matching_private_ns: []
     ping_and_dns_to_check_internet: null
     internet_connected: null
     resolve_google: null
@@ -9,9 +11,144 @@
     resolve_facebook: null
     resolve_apple: null
     dns_working: null
+    all_required_nameservers_present: null
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check internet connectivity by pinging 1.1.1.1, 8.8.8.8, 8.8.4.4 and Check DNS resolution by resolving google.com, microsoft.com, facebook.com, apple.com"
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Read /etc/resolv.conf content"
+  slurp:
+    src: /etc/resolv.conf
+  register: resolv_conf_raw
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Decode and split lines"
+  set_fact:
+    resolv_conf_lines: "{{ resolv_conf_raw.content | b64decode | split('\n') | reject('equalto', '') | list }}"
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Extract existing nameservers"
+  set_fact:
+    existing_nameservers: "{{ resolv_conf_lines | select('match', '^nameserver ') | map('regex_replace', '^nameserver\\s+', '') | list }}"
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if all required public nameservers are present"
+  set_fact:
+    all_required_nameservers_present: "{{ required_public_nameservers | difference(existing_nameservers) | length == 0 }}"
+    
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Save non-nameserver lines"
+  set_fact:
+    preserved_lines: "{{ resolv_conf_lines | reject('match', '^nameserver ') | list }}"
+  when: not all_required_nameservers_present
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Get bridge IPs (vmbr0 / vmbr0_LANnInt)"
+  shell: "ip -o -4 addr show | awk '$2 ~ /vmbr0|vmbr0_LANnInt/ {print $4}'"
+  register: bridge_ips
+  changed_when: false
+  when: not all_required_nameservers_present
+
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Set bridge CIDRs list"
+  set_fact:
+    bridge_cidrs: "{{ bridge_ips.stdout_lines }}"
+  when: not all_required_nameservers_present
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Classify existing nameservers into public/private"
+  set_fact:
+    public_ns: >-
+      {{ existing_nameservers
+          | select('match', '^(?!10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.).*')
+          | list }}
+    private_ns: >-
+      {{ existing_nameservers
+          | select('match', '^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)')
+          | list }}
+  when: not all_required_nameservers_present
+
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Deploy check_subnet.sh helper script"
+  copy:
+    dest: /tmp/check_subnet.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      if [ "$#" -ne 2 ]; then
+          echo "Usage: $0 <IP/CIDR> <IP_to_check>"
+          exit 1
+      fi
+      CIDR="$1"; IP_TO_CHECK="$2"
+      IP=$(echo "$CIDR" | cut -d'/' -f1)
+      PREFIX=$(echo "$CIDR" | cut -d'/' -f2)
+      ip2int() {
+          local IFS=.; read -r a b c d <<< "$1"
+          echo $(( (a<<24)+(b<<16)+(c<<8)+d ))
+      }
+      mask_from_prefix() {
+          local p=$1
+          echo $(( (0xFFFFFFFF << (32 - p)) & 0xFFFFFFFF ))
+      }
+      get_network() {
+          local ip_int mask_int
+          ip_int=$(ip2int "$1"); mask_int=$2
+          echo $(( ip_int & mask_int ))
+      }
+      IP_INT=$(ip2int "$IP")
+      CHECK_INT=$(ip2int "$IP_TO_CHECK")
+      MASK_INT=$(mask_from_prefix "$PREFIX")
+      NET1=$(get_network "$IP" "$MASK_INT")
+      NET2=$(get_network "$IP_TO_CHECK" "$MASK_INT")
+      if [ "$NET1" -eq "$NET2" ]; then
+          echo "YES"
+      else
+          echo "NO"
+      fi
+  changed_when: false
+  when: not all_required_nameservers_present
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Check each private NS against each bridge CIDR"
+  shell: "/tmp/check_subnet.sh {{ item.1 }} {{ item.0 }}"
+  register: subnet_checks
+  ignore_errors: yes
+  with_nested:
+    - "{{ private_ns }}"
+    - "{{ bridge_cidrs }}"
+  changed_when: false
+  when: not all_required_nameservers_present
+
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Remove temporary subnet-check script"
+  file:
+    path: /tmp/check_subnet.sh
+    state: absent
+  changed_when: false
+  when: not all_required_nameservers_present
+    
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Aggregate private nameservers that matched a bridge subnet"
+  set_fact:
+    matching_private_ns: >-
+      {{ matching_private_ns + 
+          ( subnet_checks.results 
+            | selectattr('stdout', 'equalto', 'YES') 
+            | map(attribute='item.0') 
+            | list ) 
+          | unique }}
+  when: not all_required_nameservers_present
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Build final nameserver list"
+  set_fact:
+    final_nameservers: >-
+      {{ (public_ns + matching_private_ns + required_public_nameservers) | unique }}
+  when: not all_required_nameservers_present
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Write updated /etc/resolv.conf"
+  copy:
+    dest: /etc/resolv.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      {% for line in preserved_lines %}
+      {{ line }}
+      {% endfor %}
+      {% for ns in final_nameservers %}
+      nameserver {{ ns }}
+      {% endfor %}
+  changed_when: false
+  when: not all_required_nameservers_present
+  
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check internet connectivity by pinging 1.1.1.1, 8.8.8.8, 8.8.4.4 and Check DNS resolution by resolving google.com, microsoft.com, facebook.com, apple.com"
   shell: |
     (ping -c 1 -W 1 1.1.1.1 || ping -c 1 -W 1 8.8.8.8 || ping -c 1 -W 1 8.8.4.4) && 
     (getent hosts google.com || getent hosts microsoft.com || getent hosts facebook.com || getent hosts apple.com)
@@ -20,7 +157,7 @@
   changed_when: false
   failed_when: false
 
-- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Fail if no ping or no dns was successful"
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Fail if no ping or no dns was successful"
   fail:
     msg: "Internet connectivity check failed. No ping responses, or DNS resolution check failed. No domain could be resolved, Output: {{ ping_and_dns_to_check_internet }}"
   when: ping_and_dns_to_check_internet.rc != 0

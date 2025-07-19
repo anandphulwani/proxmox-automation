@@ -405,7 +405,7 @@
             } %}
 
             {% for offset, target_port in rules.items() %}
-              tcp dport {{ offset + id }} dnat to {{ ip }}:{{ target_port }}
+              iifname "vmbr0_mainbrg" tcp dport {{ offset + id }} dnat to {{ ip }}:{{ target_port }}
             {% endfor %}
           {% endfor %}
           {% if subnet_prefix == '8' %}

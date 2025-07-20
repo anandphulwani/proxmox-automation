@@ -33,7 +33,13 @@
     regexp: '^\s*#\s*interface\s*=.*$'
     replace: 'interface=vmbr1_LANnInt\n'
 
-- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Added values to `DHCP range` for DHCP"
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Enabling bind-interfaces for DHCP"
+  replace:
+    path: "/etc/dnsmasq.conf"
+    regexp: '^\s*#\s*bind-interfaces\s*$'
+    replace: 'bind-interfaces\n'
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Added values to `DHCP range` for DHCP"
   replace:
     path: /etc/dnsmasq.conf
     regexp: "\
@@ -49,7 +55,7 @@
       \\d{1,3}h"
     replace: "dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},6h"
 
-- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Added values to `default gateway` for DHCP"
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Added values to `default gateway` for DHCP"
   replace:
     path: /etc/dnsmasq.conf
     regexp: "\
@@ -63,7 +69,7 @@
       )"
     replace: "dhcp-option=3,{{ default_gateway }}"
 
-- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Added values to `DNS servers` for DHCP"
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Added values to `DNS servers` for DHCP"
   lineinfile:
     path: "/etc/dnsmasq.conf"
     regexp: '^\s*#\s*dhcp-option\s*=\s*6\s*,\s*=.*$'
@@ -71,7 +77,7 @@
     state: present
     insertafter: EOF
 
-- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Create `dhcp_static_mappings_generator.sh` file and append content to it"
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Create `dhcp_static_mappings_generator.sh` file and append content to it"
   copy:
     dest: "/usr/local/bin/dhcp_static_mappings_generator.sh"
     content: |
@@ -294,7 +300,7 @@
       done
       {% endraw %}
 
-- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Set execute permission on the script"
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Set execute permission on the script"
   file:
     path: "/usr/local/bin/dhcp_static_mappings_generator.sh"
     owner: root
@@ -302,7 +308,7 @@
     mode: '0755'
     state: file
 
-- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Create systemd service to run script at boot"
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Create systemd service to run script at boot"
   copy:
     dest: /etc/systemd/system/dhcp-static-gen.service
     owner: root
@@ -323,38 +329,38 @@
       [Install]
       WantedBy=multi-user.target
 
-- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Reload systemd"
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Reload systemd"
   command: systemctl daemon-reload
 
-- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Enable dhcp-static-gen to run at boot"
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Enable dhcp-static-gen to run at boot"
   systemd:
     name: dhcp-static-gen.service
     enabled: true
 
-- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Restart `dnsmasq` service"
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Restart `dnsmasq` service"
   service:
     name: dnsmasq
     state: restarted
 
-- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Restart `networking` service"
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Restart `networking` service"
   service:
     name: networking
     state: restarted
 
-- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Enable and start `nftables` service"
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Enable and start `nftables` service"
   systemd:
     name: nftables
     enabled: yes
     state: started
 
-- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Enable IPv4 forwarding"
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Enable IPv4 forwarding"
   sysctl:
     name: net.ipv4.ip_forward
     value: '1'
     state: present
     reload: yes
 
-- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Deploy nftables config with port forwarding rules"
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Deploy nftables config with port forwarding rules"
   copy:
     dest: /etc/nftables.conf
     owner: root
@@ -449,14 +455,14 @@
         }
       }
 
-- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Reload nftables to apply new rules"
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Reload nftables to apply new rules"
   command: nft -f /etc/nftables.conf
 
-- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Touching checksum file on successful completion"
+- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Touching checksum file on successful completion"
   shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_* && sleep 2 && touch /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_$(date +%Y%m%d-%H%M%S).run.tmp"
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
+- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
   reboot:
     msg: "Reboot initiated by Ansible for networking `interface` and dnsmasq server installation changes"
     reboot_timeout: 600

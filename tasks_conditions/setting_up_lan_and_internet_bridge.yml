@@ -131,7 +131,15 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check if bind-interfaces is set in `/etc/dnsmasq.conf`"
+  shell: grep -qzrwPl 'bind-interfaces\n' /etc/dnsmasq.conf
+  register: bind_interfaces_present
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: is_run_file_older_than_any_file_being_changed
+
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},6h' /etc/dnsmasq.conf
   register: dhcp_range_present
   ignore_errors: yes
@@ -139,7 +147,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Check if any `default gateway` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Check if any `default gateway` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-option=3,{{ default_gateway }}' /etc/dnsmasq.conf
   register: default_gateway_present
   ignore_errors: yes
@@ -147,7 +155,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Check if any `DNS servers` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Check if any `DNS servers` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-option=6,{{ dns_server_01 }},{{ dns_server_02 }}' /etc/dnsmasq.conf
   register: dns_servers_present
   ignore_errors: yes
@@ -155,7 +163,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Set `is_condition_setting_up_lan_and_internet_bridge` based on conditions"
+- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Set `is_condition_setting_up_lan_and_internet_bridge` based on conditions"
   set_fact:
     is_condition_setting_up_lan_and_internet_bridge: true
   when: 

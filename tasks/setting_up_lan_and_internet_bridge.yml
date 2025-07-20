@@ -4,45 +4,7 @@
     section_name: "`Setting up LAN and Internet Bridge`"
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Added values to `DHCP range` for DHCP"
-  replace:
-    path: /etc/dnsmasq.conf
-    regexp: "\
-      #\\s*\
-      dhcp-range\\s*=\\s*\
-      (?:\
-        (?:\
-          (?:\
-            \\d{1,3}\\.\
-          ){3}\\d{1,3}\
-        ),\
-      ){3}\
-      \\d{1,3}h"
-    replace: "dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},6h"
-
-- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Added values to `default gateway` for DHCP"
-  replace:
-    path: /etc/dnsmasq.conf
-    regexp: "\
-      #\\s*\
-      dhcp-option\\s*=\\s*\
-      3\\s*,\\s*\
-      (?:\
-        (?:\
-          \\d{1,3}\\.\
-        ){3}\\d{1,3}\
-      )"
-    replace: "dhcp-option=3,{{ default_gateway }}"
-
-- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Added values to `DNS servers` for DHCP"
-  lineinfile:
-    path: "/etc/dnsmasq.conf"
-    regexp: '^\s*#\s*dhcp-option\s*=\s*6\s*,\s*=.*$'
-    line: 'dhcp-option=6,{{ dns_server_01 }},{{ dns_server_02 }}'
-    state: present
-    insertafter: EOF
-
-- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr1_LANnInt`"
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Modify `/etc/network/interfaces` to add `vmbr1_LANnInt`"
   replace:
     path: /etc/network/interfaces
     regexp: "\
@@ -64,6 +26,44 @@
       \\2\n\
       \t# LAN and Internet connection\n\
       \\3"
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Added values to `DHCP range` for DHCP"
+  replace:
+    path: /etc/dnsmasq.conf
+    regexp: "\
+      #\\s*\
+      dhcp-range\\s*=\\s*\
+      (?:\
+        (?:\
+          (?:\
+            \\d{1,3}\\.\
+          ){3}\\d{1,3}\
+        ),\
+      ){3}\
+      \\d{1,3}h"
+    replace: "dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},6h"
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Added values to `default gateway` for DHCP"
+  replace:
+    path: /etc/dnsmasq.conf
+    regexp: "\
+      #\\s*\
+      dhcp-option\\s*=\\s*\
+      3\\s*,\\s*\
+      (?:\
+        (?:\
+          \\d{1,3}\\.\
+        ){3}\\d{1,3}\
+      )"
+    replace: "dhcp-option=3,{{ default_gateway }}"
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Added values to `DNS servers` for DHCP"
+  lineinfile:
+    path: "/etc/dnsmasq.conf"
+    regexp: '^\s*#\s*dhcp-option\s*=\s*6\s*,\s*=.*$'
+    line: 'dhcp-option=6,{{ dns_server_01 }},{{ dns_server_02 }}'
+    state: present
+    insertafter: EOF
 
 - name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Create `dhcp_static_mappings_generator.sh` file and append content to it"
   copy:

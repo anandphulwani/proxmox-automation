@@ -106,7 +106,7 @@
 
 - name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Determine vmbr1_iprange using the assigned IP address"
   set_fact:
-    vmbr1_iprange: "{{ '10.0.0.0/8' if filtered_ips | map('regex_search', '^192\\.168\\.0\\.\\d+$') | select | list | length > 0 else
+    vmbr1_iprange: "{{ '10.0.0.0/8' if filtered_ips | map('regex_search', '^192\\.168\\.\\d+\\.\\d+$') | select | list | length > 0 else
           '172.16.0.0/16' if filtered_ips | map('regex_search', '^10\\.\\d+\\.\\d+\\.\\d+$') | select | list | length > 0 else
           '192.168.0.0/16' }}"
   when: is_run_file_older_than_any_file_being_changed

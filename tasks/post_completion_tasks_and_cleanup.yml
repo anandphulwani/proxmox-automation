@@ -2,17 +2,52 @@
   set_fact:
     file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
     section_name: "`Post Completion Tasks and Cleanup`"
+    hosts_ip_check: null
+    current_hosts_ip: null
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Update grub"
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Read /etc/network/interfaces"
+  slurp:
+    src: /etc/network/interfaces
+  register: interfaces_file
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Extract IP of vmbr0_mainbrg as string"
+  set_fact:
+    vmbr0_mainbrg_ip: "{{ ((interfaces_file.content | b64decode) | regex_findall('iface vmbr0_mainbrg.*?\\n(?:\\s+.*\\n)*?\\s*address\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)'))[0] | default('') }}"
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Validate vmbr0_mainbrg_ip is non-empty and IPv4"
+  fail:
+    msg: "Extracted vmbr0_mainbrg IP is either blank or invalid"
+  when: vmbr0_mainbrg_ip | length == 0 or not (vmbr0_mainbrg_ip is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$'))
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Get current IP from /etc/hosts (excluding 127.0.0.1)"
+  shell: grep -Eo '^([0-9]{1,3}\.){3}[0-9]{1,3} ' /etc/hosts | grep -v '^127\.0\.0\.1 $'
+  register: hosts_ip_check
+  failed_when: false
+  changed_when: false
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Set current_hosts_ip fact"
+  set_fact:
+    current_hosts_ip: "{{ hosts_ip_check.stdout_lines[0] | default('') | trim }}"
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Replace IP in /etc/hosts if different"
+  replace:
+    path: /etc/hosts
+    regexp: '^{{ current_hosts_ip }} '
+    replace: "{{ vmbr0_mainbrg_ip }} "
+  when:
+    - current_hosts_ip != ''
+    - current_hosts_ip != vmbr0_mainbrg_ip
+    
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Update grub"
   command: update-grub
   when: is_condition_iommu or is_condition_iommu_modules
 
-- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Update initramfs"
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Update initramfs"
   command: update-initramfs -u -k all
   when: is_condition_iommu or is_condition_iommu_modules
 
-- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Reboot the server"
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Reboot the server"
   reboot:
     msg: "Reboot initiated by `Post Completion Tasks and Cleanup.yml`"
     reboot_timeout: 600

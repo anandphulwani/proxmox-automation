@@ -367,57 +367,83 @@
     group: root
     mode: '0644'
     content: |
+      define wan_ip = {{ vmbr0_mainbrg_ip }}
+      define wan_iface = "vmbr0_mainbrg"
+      define lan_iface = "vmbr1_LANnInt"
+
       flush ruleset
 
       table ip nat {
-        chain prerouting {
-          type nat hook prerouting priority -100;
+          set proxmox_reserved_tcp_ports {
+              type inet_service;
+              flags interval;
+              elements = {
+                  53,                           # DNS zone transfers, large replies
+                  {{ ssh_port_new }},                        # SSH
+                  443,                          # HTTPS (API access, GUI)
+                  {{ webgui_port_new }},                        # Proxmox Web GUI
+                  8007,                         # Proxmox Backup Server
+                  3128,                         # NoVNC proxy
+                  3129,                         # SPICE proxy (optional)
+                  5900-5999                     # VNC/SPICE consoles
+              }
+          }
 
+          set proxmox_reserved_udp_dport {
+              type inet_service;
+              elements = {
+                  53,                             # DNS queries (standard)
+                  67,                             # DHCP server (bootps)
+                  68                              # DHCP client (bootpc)
+              }
+          }
+
+          set proxmox_reserved_udp_sport {
+              type inet_service;
+              elements = {
+                  53,                             # DNS queries (standard)
+                  67,                             # DHCP replies from server
+                  68                              # DHCP requests from client
+              }
+          }
+
+          chain prerouting {
+              type nat hook prerouting priority -100;
+
+              # --- Protect critical Proxmox ports from accidental DNAT ---
+              tcp dport @proxmox_reserved_tcp_ports accept
+              udp dport @proxmox_reserved_udp_dport accept
+              udp sport @proxmox_reserved_udp_sport accept
           {% set ip_base, subnet_prefix = vmbr1_iprange.split('/') %}
           {% set ip_blocks = ip_base.split('.') %}
           {% set first_block = ip_blocks[0]|int %}
           {% set second_block = ip_blocks[1]|int if subnet_prefix != '8' else None %}
+          {% for iface in ['wan_iface', 'lan_iface'] %}
+            {% for id in range(100, 1000) %}
+              {% set id_str = "%03d"|format(id) %}
+              {% if subnet_prefix == '8' %}
+                {% set part1 = id_str[0]|int %}
+                {% set part2 = id_str[1:3]|int %}
+                {% set ip = "%d.%d.%d.%d" % (first_block, part1, part2, 1) %}
+              {% else %}
+                {% set part1 = id_str[0:2]|int %}
+                {% set part2 = id_str[2]|int %}
+                {% set ip = "%d.%d.%d.%d" % (first_block, second_block, part1, (id_str[2] + "1") | int) %}
+              {% endif %}
+              {% set rules = {
+                8000: 80,
+                21000: 21,
+                22000: 22,
+                33000: 3389,
+                36000: 3306,
+                48000: 4899,
+                54000: 5432,
+                59000: 5900,
+              } %}
 
-                    # --- Protect critical Proxmox ports from accidental DNAT ---
-                    tcp dport 53 accept    # DNS zone transfers, large replies
-                    tcp dport {{ ssh_port_new }} accept          # SSH
-                    tcp dport 443 accept          # HTTPS (API access, GUI)
-                    tcp dport {{ webgui_port_new }} accept          # Proxmox Web GUI
-                    tcp dport 8007 accept          # Proxmox Backup Server
-                    tcp dport 3128 accept          # NoVNC proxy
-                    tcp dport 3129 accept          # SPICE proxy (optional)
-                    tcp dport 5900-5999 accept          # VNC/SPICE consoles
-
-                    udp dport 53 accept          # DNS queries (standard)
-                    udp dport 67 accept          # DHCP server (bootps)
-                    udp sport 67 accept          # DHCP replies from server
-                    udp dport 68 accept          # DHCP client (bootpc)
-                    udp sport 68 accept          # DHCP requests from client
-
-          {% for id in range(100, 1000) %}
-            {% set id_str = "%03d"|format(id) %}
-            {% if subnet_prefix == '8' %}
-              {% set part1 = id_str[0]|int %}
-              {% set part2 = id_str[1:3]|int %}
-              {% set ip = "%d.%d.%d.%d" % (first_block, part1, part2, 1) %}
-            {% else %}
-              {% set part1 = id_str[0:2]|int %}
-              {% set part2 = id_str[2]|int %}
-              {% set ip = "%d.%d.%d.%d" % (first_block, second_block, part1, (id_str[2] + "1") | int) %}
-            {% endif %}
-            {% set rules = {
-              8000: 80,
-              21000: 21,
-              22000: 22,
-              33000: 3389,
-              36000: 3306,
-              48000: 4899,
-              54000: 5432,
-              59000: 5900,
-            } %}
-
-            {% for offset, target_port in rules.items() %}
-              iifname "vmbr0_mainbrg" tcp dport {{ offset + id }} dnat to {{ ip }}:{{ target_port }}
+              {% for offset, target_port in rules.items() %}
+      iifname ${{ iface }} ip daddr $wan_ip tcp dport {{ offset + id }} dnat to {{ ip }}:{{ target_port }}
+              {% endfor %}
             {% endfor %}
           {% endfor %}
           {% if subnet_prefix == '8' %}
@@ -426,33 +452,38 @@
             {% set dmz_ip = "%d.%d.255.254" % (ip_blocks[0] | int, ip_blocks[1] | int) %}
           {% endif %}
 
-                    # DMZ catch-all: forward all other TCP ports except Proxmox-reserved ones
-                    meta l4proto tcp dnat to {{ dmz_ip }}
-          
-                    # Optional: forward all other UDP ports to DMZ (excluding NTP for example)
-                    udp dport != 123 dnat to {{ dmz_ip }}
-        }
+              # --- DMZ Catch-All Rules (except Proxmox ports) ---
+              iifname $wan_iface ip daddr $wan_ip tcp dport != @proxmox_reserved_tcp_ports dnat to {{ dmz_ip }}
+              iifname $lan_iface ip daddr $wan_ip tcp dport != @proxmox_reserved_tcp_ports dnat to {{ dmz_ip }}
 
-        chain postrouting {
-          type nat hook postrouting priority 100;
-          oifname "vmbr0_mainbrg" masquerade
-        }
+              iifname $wan_iface ip daddr $wan_ip udp dport != @proxmox_reserved_udp_dport dnat to {{ dmz_ip }}
+              iifname $lan_iface ip daddr $wan_ip udp dport != @proxmox_reserved_udp_dport dnat to {{ dmz_ip }}
+          }
+
+          chain postrouting {
+              type nat hook postrouting priority 100;
+              oifname $wan_iface masquerade
+              ip saddr {{ vmbr1_iprange }} ip daddr {{ vmbr1_iprange }} oif $lan_iface snat to {{ default_gateway }}
+          }
       }
 
       table ip filter {
-        chain forward {
-          type filter hook forward priority 0;
-          policy drop;
+          chain forward {
+              type filter hook forward priority 0;
+              policy drop;
 
-          # Allow LAN to Internet
-          iifname "vmbr1_LANnInt" oifname "vmbr0_mainbrg" accept
+              # LAN → Internet
+              iifname $lan_iface oifname $wan_iface accept
 
-          # Allow returning traffic from Internet to LAN
-          iifname "vmbr0_mainbrg" oifname "vmbr1_LANnInt" ct state related,established accept
+              # Internet → LAN (reply)
+              iifname $wan_iface oifname $lan_iface ct state related,established accept
 
-          # Allow incoming DNAT connections from WAN to LAN
-          iifname "vmbr0_mainbrg" oifname "vmbr1_LANnInt" ct state new,related,established accept
-        }
+              # WAN → LAN (DNAT new)
+              iifname $wan_iface oifname $lan_iface ct state new,related,established accept
+
+              # Hairpin NAT: LAN → LAN via WAN IP (new+return)
+              iifname $lan_iface oifname $lan_iface ct state new,related,established accept
+          }
       }
 
 - name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Reload nftables to apply new rules"

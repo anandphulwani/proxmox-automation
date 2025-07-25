@@ -26,6 +26,7 @@
     default_gateway_present: null
     dns_servers_present: null
     filtered_ips: []
+    vmbr0_mainbrg_ip: null
   changed_when: false
 
 - name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Filter out already installed packages"
@@ -96,7 +97,21 @@
   when: (is_any_file_being_changed_after_run_file.skipped is defined and is_any_file_being_changed_after_run_file.skipped)
         or is_any_file_being_changed_after_run_file.rc is defined and is_any_file_being_changed_after_run_file.rc != 0
 
-- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Collect each IP except `lo` and `vmbr1_LANnInt`"
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Read /etc/network/interfaces"
+  slurp:
+    src: /etc/network/interfaces
+  register: interfaces_file
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Extract IP of `vmbr0_mainbrg` as string"
+  set_fact:
+    vmbr0_mainbrg_ip: "{{ ((interfaces_file.content | b64decode) | regex_findall('iface vmbr0_mainbrg.*?\\n(?:\\s+.*\\n)*?\\s*address\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)'))[0] | default('') }}"
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Validate `vmbr0_mainbrg_ip` is non-empty and IPv4"
+  fail:
+    msg: "Extracted vmbr0_mainbrg IP is either blank or invalid"
+  when: vmbr0_mainbrg_ip | length == 0 or not (vmbr0_mainbrg_ip is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$'))
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Collect each IP except `lo` and `vmbr1_LANnInt`"
   set_fact:
     filtered_ips: "{{ filtered_ips + [ ansible_facts[item].ipv4.address ] }}"
   when:
@@ -104,14 +119,14 @@
     - ansible_facts[item].ipv4 is defined
   loop: "{{ ansible_interfaces }}"
 
-- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Determine vmbr1_iprange using the assigned IP address"
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Determine vmbr1_iprange using the assigned IP address"
   set_fact:
     vmbr1_iprange: "{{ '10.0.0.0/8' if filtered_ips | map('regex_search', '^192\\.168\\.\\d+\\.\\d+$') | select | list | length > 0 else
           '172.16.0.0/16' if filtered_ips | map('regex_search', '^10\\.\\d+\\.\\d+\\.\\d+$') | select | list | length > 0 else
           '192.168.0.0/16' }}"
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Set DHCP related variables"
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Set DHCP related variables"
   set_fact:
     dhcp_range_from: "{{ '10.255.255.100' if vmbr1_iprange == '10.0.0.0/8' else ('172.31.255.100' if vmbr1_iprange == '172.16.0.0/16' else '192.168.255.100') }}"
     dhcp_range_to: "{{ '10.255.255.250' if vmbr1_iprange == '10.0.0.0/8' else ('172.31.255.250' if vmbr1_iprange == '172.16.0.0/16' else '192.168.255.250') }}"
@@ -123,7 +138,7 @@
     sample_client_ip: "{{ '10.0.0.2' if vmbr1_iprange == '10.0.0.0/8' else ('172.16.0.2' if vmbr1_iprange == '172.16.0.0/16' else '192.168.0.2') }}"
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Check if interface to listen on for DHCP is set to `vmbr1_LANnInt` in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Check if interface to listen on for DHCP is set to `vmbr1_LANnInt` in `/etc/dnsmasq.conf`"
   shell: grep -qzrwPl 'interface=vmbr1_LANnInt\n' /etc/dnsmasq.conf
   register: interface_present
   ignore_errors: yes
@@ -131,7 +146,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Check if bind-interfaces is set in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Check if bind-interfaces is set in `/etc/dnsmasq.conf`"
   shell: grep -qzrwPl 'bind-interfaces\n' /etc/dnsmasq.conf
   register: bind_interfaces_present
   ignore_errors: yes
@@ -139,7 +154,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},6h' /etc/dnsmasq.conf
   register: dhcp_range_present
   ignore_errors: yes
@@ -147,7 +162,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Check if any `default gateway` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Check if any `default gateway` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-option=3,{{ default_gateway }}' /etc/dnsmasq.conf
   register: default_gateway_present
   ignore_errors: yes
@@ -155,7 +170,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Check if any `DNS servers` for DHCP is present in `/etc/dnsmasq.conf`"
+- name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Check if any `DNS servers` for DHCP is present in `/etc/dnsmasq.conf`"
   shell: grep -qrwl 'dhcp-option=6,{{ dns_server_01 }},{{ dns_server_02 }}' /etc/dnsmasq.conf
   register: dns_servers_present
   ignore_errors: yes
@@ -163,7 +178,7 @@
   failed_when: false
   when: is_run_file_older_than_any_file_being_changed
 
-- name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Set `is_condition_setting_up_lan_and_internet_bridge` based on conditions"
+- name: "{{ file_sno_type_prefix }} 022: {{ section_name }}, Set `is_condition_setting_up_lan_and_internet_bridge` based on conditions"
   set_fact:
     is_condition_setting_up_lan_and_internet_bridge: true
   when: 

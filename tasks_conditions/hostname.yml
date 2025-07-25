@@ -2,22 +2,70 @@
   set_fact:
     file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
     section_name: "`Hostname`"
+    required_packages:
+      - ifupdown2
     is_hostname_already_set: null
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Check if `hostname` is defined and not empty"
+- name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Filter out already installed packages"
+  set_fact:
+    required_packages: "{{ required_packages | difference(already_installed_packages) }}"
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if required packages are installed"
+  command: "dpkg-query -W -f='${Package} ${Status}\n' {{ required_packages | join(' ') }}"
+  register: package_check_results
+  ignore_errors: yes
+  changed_when: false
+  failed_when: false
+  when: required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Collect missing packages from stdout"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.0] }}"
+  loop: "{{ package_check_results.stdout_lines | map('split', ' ') | map('list') | list }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "item[1] != 'install' or item[2] != 'ok' or item[3] != 'installed'"
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Collect missing packages from stderr"
+  set_fact:
+    missing_packages: "{{ missing_packages + [item.split(' ')[-1]] }}"
+  loop: "{{ package_check_results.stderr_lines }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+    - "'no packages found matching' in item"
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Add already installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + (required_packages | difference(missing_packages))) | unique }}"
+  when: 
+    - required_packages is defined and required_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Install missing required packages"
+  apt:
+    name: "{{ missing_packages }}"
+    state: present
+  when: missing_packages is defined and missing_packages | length > 0
+
+# For when the `missing_packages` are installed
+- name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Add new installed packages and remove duplicates"
+  set_fact:
+    already_installed_packages: "{{ (already_installed_packages + missing_packages) | unique }}"
+  when: missing_packages is defined and missing_packages | length > 0
+
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Check if `hostname` is defined and not empty"
   fail:
     msg: "The variable 'hostname' is not defined or is empty."
   when: hostname is not defined or hostname == '' or hostname is none
 
-- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Check if `hostname` is already set"
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Check if `hostname` is already set"
   shell: "hostname | grep -qo '^{{ hostname }}$'"
   register: is_hostname_already_set
   ignore_errors: yes
   changed_when: false
   failed_when: false
 
-- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Set `is_condition_hostname` based on conditions"
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Set `is_condition_hostname` based on conditions"
   set_fact:
     is_condition_hostname: true
   when: is_hostname_already_set.rc != 0

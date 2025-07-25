@@ -12,6 +12,7 @@
       - lsof
       - fail2ban # https://pve.proxmox.com/wiki/Fail2ban
       - cron
+      - ifupdown2
       - dnsmasq
       - perl
       - nftables

@@ -8,6 +8,7 @@
     is_run_file_older_than_any_file_being_changed: false
     required_packages:
       - cron
+      - ifupdown2
       - dnsmasq
       - perl
       - nftables

@@ -103,20 +103,13 @@
   loop: "{{ physical_interfaces.stdout_lines }}"
   when: physical_card_without_bridge_count.stdout | int > 0
 
-- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Restart `networking` service"
-  service:
-    name: networking
-    state: restarted
-  when: is_vmbr0_modified_in_interfaces.rc != 0 or is_vmbr1_present_in_interfaces.rc != 0
-
 - name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Touching checksum file on successful completion"
   shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_modify_add_network_adapters_* && sleep 2 && touch /root/proxmox_automation_install/task_modify_add_network_adapters_$(date +%Y%m%d-%H%M%S).run.tmp"
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
+- name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Reboot the server"
   reboot:
     msg: "Reboot initiated by Ansible for networking `interface` changes"
     reboot_timeout: 600
   when: 
-    - is_condition_post_completion_tasks_and_cleanup is not defined
     - is_vmbr0_modified_in_interfaces.rc != 0 or is_vmbr1_present_in_interfaces.rc != 0

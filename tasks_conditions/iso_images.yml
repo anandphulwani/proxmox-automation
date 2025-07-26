@@ -1,7 +1,7 @@
 - name: "Declare all variables"
   set_fact:
     file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task_Condition:"
-    section_name: "`VirtIO.iso`"
+    section_name: "`ISO Images`"
     required_packages:
       - curl
       - aria2
@@ -77,7 +77,7 @@
     path: /var/lib/vz/template/iso/{{ virtio_iso_parentdir.stdout }}.iso
   register: virtio_iso_of_specific_version_exists
 
-- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Set `is_condition_virtio_iso` based on conditions"
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Set `is_condition_iso_images` based on conditions"
   set_fact:
-    is_condition_virtio_iso: true
+    is_condition_iso_images: true
   when: not virtio_iso_of_specific_version_exists.stat.exists

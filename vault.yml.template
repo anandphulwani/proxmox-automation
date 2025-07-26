@@ -18,3 +18,10 @@ cloudflare_account_id: "<<cloudflare_account_id>>"
 cloudflare_api_token: "<<cloudflare_api_token>>"
 subdomain_name_of_server: "<<subdomain_name_of_server>>"
 public_ip_of_server: "<<public_ip_of_server>>"
+iso_files_to_download:
+  - name: <<name_of_iso_file1.iso>>
+    url: <<url_of_file1>>
+    simultaneous_connections: <<simultaneous_connections_for_file1>> # Use 1 to 16
+  - name: <<name_of_iso_file2.iso>>
+    url: <<url_of_file2>>
+    simultaneous_connections: <<simultaneous_connections_for_file2>> # Use 1 to 16

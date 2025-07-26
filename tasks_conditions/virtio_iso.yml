@@ -4,6 +4,7 @@
     section_name: "`VirtIO.iso`"
     required_packages:
       - curl
+      - aria2
     package_check_results: null
     missing_packages: []
     virtio_iso_link: null

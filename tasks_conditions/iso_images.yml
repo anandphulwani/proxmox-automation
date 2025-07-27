@@ -5,11 +5,13 @@
     required_packages:
       - curl
       - aria2
+      - expect
     package_check_results: null
     missing_packages: []
     virtio_iso_link: null
     virtio_iso_parentdir: null
-    virtio_iso_of_specific_version_exists: null    
+    virtio_iso_of_specific_version_exists: null
+    filtered_iso_files: []
   changed_when: false
 
 - name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Filter out already installed packages"
@@ -77,7 +79,37 @@
     path: /var/lib/vz/template/iso/{{ virtio_iso_parentdir.stdout }}.iso
   register: virtio_iso_of_specific_version_exists
 
-- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Set `is_condition_iso_images` based on conditions"
+- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Get remote ISO files size"
+  uri:
+    url: "{{ item.url }}"
+    method: HEAD
+  register: remote_head_results
+  loop: "{{ iso_files_to_download }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Get local files stat"
+  stat:
+    path: "/var/lib/vz/template/iso/{{ item.name }}"
+  register: local_stat_results
+  loop: "{{ iso_files_to_download }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Filter iso_files_to_download where size doesn't match or file is missing"
+  set_fact:
+    filtered_iso_files: >-
+      {{
+        filtered_iso_files + [iso_files_to_download[item_index]]
+        if (not local_stat_results.results[item_index].stat.exists)
+        or (remote_head_results.results[item_index].content_length | int != local_stat_results.results[item_index].stat.size | default(0))
+        else filtered_iso_files
+      }}
+  loop: "{{ range(0, iso_files_to_download | length) | list }}"
+  loop_control:
+    loop_var: item_index
+
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Set `is_condition_iso_images` based on conditions"
   set_fact:
     is_condition_iso_images: true
-  when: not virtio_iso_of_specific_version_exists.stat.exists
+  when: not virtio_iso_of_specific_version_exists.stat.exists or (filtered_iso_files | length > 0)

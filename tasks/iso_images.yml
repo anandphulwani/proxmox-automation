@@ -8,3 +8,63 @@
   get_url:
     url: "{{ virtio_iso_link.stdout }}"
     dest: /var/lib/vz/template/iso/{{ virtio_iso_parentdir.stdout }}.iso
+  when: not virtio_iso_of_specific_version_exists.stat.exists
+
+- name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Generate aria2c download script"
+  copy:
+    dest: /tmp/download_all_iso.sh
+    content: |
+      #!/bin/bash
+      {% for item in filtered_iso_files %}
+      unbuffer aria2c -x {{ item.simultaneous_connections }} -s {{ item.simultaneous_connections }} \
+        -d /var/lib/vz/template/iso -o {{ item.name }} "{{ item.url }}" \
+        > /tmp/aria2c_download_iso_{{ item.name }}.log 2>&1
+      {% endfor %}
+  when: filtered_iso_files | length > 0
+
+- name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Set execute permission on the script"
+  file:
+    path: "/tmp/download_all_iso.sh"
+    owner: root
+    group: root
+    mode: '0755'
+    state: file
+
+- name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Run download script asynchronously"
+  shell: /tmp/download_all_iso.sh
+  async: 7200
+  poll: 0
+  register: download_job
+
+- name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Check for matching number in log with delay"
+  shell: |
+    #!/bin/bash
+
+    while true; do
+      if grep -q "(OK):download completed." "/tmp/aria2c_download_iso_{{ item.0.name }}.log"; then
+        echo "SUCCESS_FOUND"
+        break
+      fi
+
+      match=$(grep -oP '\[#.{5}\S.*\(\K\d{1,2}(?=%\))' "/tmp/aria2c_download_iso_{{ item.0.name }}.log" | tail -n 1)
+      echo $match
+      
+      if [[ ! -z "$match" ]]; then
+        if (( match >= {{ item.1 }} )); then
+          echo "THRESHOLD_REACHED: $match >= {{ item.1 }}"
+          break
+        fi
+      fi
+
+      sleep 2
+    done
+  args:
+    executable: /bin/bash
+  failed_when: false
+  loop: "{{ filtered_iso_files | product([1,3,5,10,20,30,40,50,60,70,80,90,92,95,97,100]) | list }}"
+  loop_control:
+    label: "{{ item.0.name }} - {{ '%02d' | format(item.1) }}% Done..."
+
+- name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Remove `download_all_iso.sh` and `aria2c_download_iso_*` log files if exists"
+  shell: "rm -rf /tmp/download_all_iso.sh /tmp/aria2c_download_iso_*"
+  changed_when: false

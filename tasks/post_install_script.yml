@@ -30,7 +30,7 @@
     state: absent
 
 - name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Run wget to get the details of the file from the link of `post-pve-install.sh` file"
-  shell: wget -qLO /tmp/post-pve-install.sh https://github.com/tteck/Proxmox/raw/main/misc/post-pve-install.sh
+  shell: wget -4 -qLO /tmp/post-pve-install.sh https://github.com/tteck/Proxmox/raw/main/misc/post-pve-install.sh
   changed_when: false
 
 - name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Check if the `/tmp/post-pve-install.sh` is downloaded and exists"

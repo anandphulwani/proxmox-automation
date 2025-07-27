@@ -127,7 +127,9 @@
       {{ indent03 }}{{ '}' }}\n\
       {{ indent02 }}{{ '},' }}\n\
       \\3"
-  when: is_filtering_mainbrg_functionality_added_to_bridge_dropdown_box.rc != 0
+  when: is_filtering_mainbrg_functionality_added_to_bridge_dropdown_box.rc != 0  
+  register: modify_bridge_network_dropdown_box
+  failed_when: modify_bridge_network_dropdown_box.changed == false
 
   # #   
   # #  Add `Enable Main Bridge` checkbox below `bridge` dropdown box inside the `network` section of creating/editing VM dialog box
@@ -249,7 +251,10 @@
         )\
       )\
       (\
-        \\);{{ new_line }}\
+      ,?\
+      )\
+      (\
+        {{ new_line }}?{{ capture_space_and_tabs }}{{ '\\);' }}{{ new_line }}\
       )\
       "
     replace: "\
@@ -278,8 +283,11 @@
       \\2\
       \\4,\n\
       \\3\
-      \\5"
+      \\5\
+      \\6"
   when: is_enable_main_bridge_checkbox_present.rc != 0
+  register: add_enable_main_bridge_checkbox
+  failed_when: add_enable_main_bridge_checkbox.changed == false
 
 - name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Restart `pveproxy` service"
   service:

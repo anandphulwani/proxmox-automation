@@ -156,7 +156,7 @@
   when: is_run_file_older_than_any_file_being_changed
 
 - name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Check if any `DHCP range` for DHCP is present in `/etc/dnsmasq.conf`"
-  shell: grep -qrwl 'dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},6h' /etc/dnsmasq.conf
+  shell: grep -qrwl 'dhcp-range={{ dhcp_range_from }},{{ dhcp_range_to }},{{ subnet_mask }},1m' /etc/dnsmasq.conf
   register: dhcp_range_present
   ignore_errors: yes
   changed_when: false

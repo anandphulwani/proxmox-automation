@@ -58,7 +58,12 @@
   args:
     executable: /bin/bash
 
-- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Run post install expect script"
+- name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Correct the 'Nagging' subscription alert."
+  shell: sed -i 's|sed -i '\''/.*data\\.status.*{/{s/\\!//;s/active/NoMoreNagging/}'\''|perl -0777 -i -pe '\''s/(\\.data\\.status\\..*\\s*)(\\!==)(\\s*'\''\\'\'''\'')(active)('\''\\'\'''\''.*\\s*\\)\\s*\\{\\s*?Ext\\.Msg\\.show\\(\\s*{\\s*.*No valid subscription.*\\),)/\\1==\\3NoMoreNagging\\5/g'\''|g' /tmp/post-pve-install.sh
+  args:
+    executable: /bin/bash
+
+- name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Run post install expect script"
   shell: |
     expect -c '
       set timeout 90;
@@ -98,11 +103,11 @@
                       regex_replace('\\s{10,100}', '          ')
                       }}"
 
-- name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Extract specific lines containing `✓` or `✗` from `post_pve_install_execution_result_cleaned` using regex"
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Extract specific lines containing `✓` or `✗` from `post_pve_install_execution_result_cleaned` using regex"
   set_fact:
     post_pve_install_execution_result_extracted_lines: "{{ post_pve_install_execution_result_cleaned | regex_findall('.[✓✗].*?(?=\\Z|\\r|\\n|\\s{3})') }}"
 
-- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Fail if any required line is missing"
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Fail if any required line is missing"
   fail:
     msg: "The following line was not found in the extracted lines: {{ item }}"
   when: >
@@ -112,24 +117,24 @@
   register: post_pve_install_execution_failed_output
   ignore_errors: true
 
-- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Set `post_pve_install_execution_failed` flag to true, if `post_pve_install_execution_failed_output` is failed"
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Set `post_pve_install_execution_failed` flag to true, if `post_pve_install_execution_failed_output` is failed"
   set_fact:
     post_pve_install_execution_failed: true
   when: post_pve_install_execution_failed_output is failed
 
-- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Show `post_pve_install_execution_result_cleaned` if `post_pve_install_execution_failed` is true"
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Show `post_pve_install_execution_result_cleaned` if `post_pve_install_execution_failed` is true"
   fail:
     msg: "post_pve_install_execution_result_cleaned: {{ post_pve_install_execution_result_cleaned }}"
   when: post_pve_install_execution_failed
 
-- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Fail if `subscription nag` line is present and it doesn't contain `✓ Disabled` with it"
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Fail if `subscription nag` line is present and it doesn't contain `✓ Disabled` with it"
   fail:
     msg: "`subscription nag` line is present and it doesn't contain `✓ Disabled` with it."
   when: >
     (post_pve_install_execution_result_extracted_lines | select('search', 'subscription nag') | list | length > 0) and
     (' ✓ Disabled subscription nag (Delete browser cache)' not in post_pve_install_execution_result_extracted_lines)
 
-- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Touching run file on successful completion"
+- name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Touching run file on successful completion"
   shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_post_install_script_* && sleep 2 && touch /root/proxmox_automation_install/task_post_install_script_$(date +%Y%m%d-%H%M%S).run.tmp"
   ignore_errors: true
   changed_when: false

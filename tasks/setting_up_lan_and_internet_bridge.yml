@@ -102,11 +102,9 @@
       #
       # 02. **Identify Changed VM Configurations**: Finds VM configuration files in `/etc/pve/qemu-server` that have been modified more recently than `/etc/dnsmasq.conf`.
       #
-      # 03: Flush existing DHCP leases
-      # 
-      # 04. **Initialize Data Structures**: Sets up an associative array to track unique MAC addresses and an array to store new DHCP entries.
+      # 03. **Initialize Data Structures**: Sets up an associative array to track unique MAC addresses and an array to store new DHCP entries.
       #
-      # 05. **Process Each Changed VM Configuration**:
+      # 04. **Process Each Changed VM Configuration**:
       #    - Extracts the VMID from the configuration file name.
       #    - Parses network interface definitions to extract unique MAC addresses.
       #    - **IP Address Construction**:
@@ -118,11 +116,13 @@
       #        For example, with `first_block_ip=172`, `second_block_ip=16`, and `VMID=568`, the IP might be `172.16.56.81`.
       #    - Builds `dhcp-host` entries linking each MAC address to its generated IP address.
       #
-      # 06. **Remove Old Static Leases**: Cleans up outdated `dhcp-host` entries in `/etc/dnsmasq.conf` for the changed VMs to prevent duplicates.
+      # 05. **Remove Old Static Leases**: Cleans up outdated `dhcp-host` entries in `/etc/dnsmasq.conf` for the changed VMs to prevent duplicates.
       #
-      # 07. **Generate New DHCP Entries**: Compiles the new `dhcp-host` lines into a variable for insertion.
+      # 06. **Generate New DHCP Entries**: Compiles the new `dhcp-host` lines into a variable for insertion.
       #
-      # 08. **Update dnsmasq Configuration**: Inserts the new DHCP entries into `/etc/dnsmasq.conf` under the `# DHCP Static leases` section.
+      # 07. **Update dnsmasq Configuration**: Inserts the new DHCP entries into `/etc/dnsmasq.conf` under the `# DHCP Static leases` section.
+      #
+      # 09. **Dnsmasq restart**: Restarting only dnsmasq to apply those changes.
       #
       # **Outcome**:
       # - VMs receive consistent and predictable IP addresses based on their VMIDs and network interface order.
@@ -165,20 +165,13 @@
             continue
         fi
 
-        # Step 03: Flush existing leases
-        LEASE_FILE="/var/lib/misc/dnsmasq.leases"
-        if [ -f "$LEASE_FILE" ]; then
-            : > "$LEASE_FILE"         # truncate the file
-            echo "Cleared $LEASE_FILE"
-        fi
-
-        # Step 04: Initialize associative array and entries list
+        # Step 03: Initialize associative array and entries list
         unset mac_addresses
         declare -A mac_addresses
         entries=()
         # echo "Initialized mac_addresses map and entries array."
 
-        # Step 05: Process each changed VM configuration file
+        # Step 04: Process each changed VM configuration file
         for conf_file in "${changed_files[@]}"; do
             # echo "Processing file: $conf_file"
             order_no=1
@@ -240,7 +233,7 @@
             done
         done
 
-        # Step 06: Modify /etc/dnsmasq.conf to remove old static leases for each changed VM
+        # Step 05: Modify /etc/dnsmasq.conf to remove old static leases for each changed VM
         for conf_file in "${changed_files[@]}"; do
             vmid=$(basename "$conf_file" .conf)
             # echo "Removing old static leases for VMID: $vmid"
@@ -249,7 +242,7 @@
             }' /etc/dnsmasq.conf
         done
 
-        # Step 07: Generate dhcp-host lines and store them in a variable
+        # Step 06: Generate dhcp-host lines and store them in a variable
         new_dhcp_hosts=""
         for entry in "${entries[@]}"; do
             IFS='|' read -r net_num_only mac part1 part2 order_no vmid <<< "$entry"
@@ -278,10 +271,54 @@
             # echo "Generated DHCP line: $dhcp_line"
         done
 
-        # Step 08: Insert the new DHCP entries into /etc/dnsmasq.conf
+        # Step 07: Insert the new DHCP entries into /etc/dnsmasq.conf
         # echo "Updating /etc/dnsmasq.conf with new static leases..."
         perl -0777 -pi -e 's/(?:(?:(?:[ \t\n]*)# DHCP Static leases)([\s\S]*?))?(?:[ \t\n]*)(\n\n\# Always allocate the host with Ethernet address (?:[A-Fa-f0-9]{2}:?){6}\n# The IP address (?:\d{1,3}\.?){4})/\n\n# DHCP Static leases$1'"$new_dhcp_hosts"'$2/s' /etc/dnsmasq.conf
         
+        # Step 08: Clean up incorrect dynamic leases conflicting with static ones
+        LEASE_FILE="/var/lib/misc/dnsmasq.leases"
+        TMP_LEASE_FILE="/tmp/dnsmasq.leases.filtered"
+
+        if [ -f "$LEASE_FILE" ]; then
+            # echo "Found lease file: $LEASE_FILE"
+            
+            # Read all static dhcp-host mappings from /etc/dnsmasq.conf
+            declare -A static_leases
+            # echo "Reading static dhcp-host entries from /etc/dnsmasq.conf..."
+            while IFS= read -r line; do
+                if [[ "$line" =~ ^dhcp-host=([A-Fa-f0-9:]+),([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+                    mac=$(echo "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
+                    ip="${BASH_REMATCH[2]}"
+                    static_leases["$mac"]="$ip"
+                    echo "Found static mapping: $mac -> $ip"
+                fi
+            done < /etc/dnsmasq.conf
+
+            # echo "Parsing dynamic lease file..."
+            > "$TMP_LEASE_FILE"
+            while IFS=' ' read -r expiry mac ip hostname clientid; do
+                mac_lower=$(echo "$mac" | tr '[:upper:]' '[:lower:]')
+
+                if [[ -n "${static_leases[$mac_lower]}" ]]; then
+                    expected_ip="${static_leases[$mac_lower]}"
+                    if [[ "$ip" == "$expected_ip" ]]; then
+                        # echo "Keeping valid lease: $mac_lower has correct IP $ip"
+                        echo "$expiry $mac $ip $hostname $clientid" >> "$TMP_LEASE_FILE"
+                    # else
+                    #     echo "Removing conflicting lease: $mac_lower has $ip, expected $expected_ip"
+                    fi
+                else
+                    # echo "Keeping unrelated dynamic lease: $mac_lower -> $ip"
+                    echo "$expiry $mac $ip $hostname $clientid" >> "$TMP_LEASE_FILE"
+                fi
+            done < "$LEASE_FILE"
+
+            mv "$TMP_LEASE_FILE" "$LEASE_FILE"
+            # echo "Updated $LEASE_FILE with valid dynamic leases."
+        else
+            echo "Lease file not found: $LEASE_FILE"
+        fi
+
         # Step 09: Restarting only dnsmasq
         if command -v systemctl &>/dev/null; then
             echo "Restarting dnsmasq..."

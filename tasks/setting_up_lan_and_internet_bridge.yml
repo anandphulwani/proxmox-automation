@@ -377,28 +377,25 @@
       [Install]
       WantedBy=multi-user.target
 
-- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Reload systemd"
+- name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Re-exec systemd to reserialize state"
+  command: systemctl daemon-reexec
+
+- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Reload systemd"
   command: systemctl daemon-reload
 
-- name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Enable dhcp-static-gen to run at boot"
+- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Enable dhcp-static-gen to run at boot"
   systemd:
     name: dhcp-static-gen.service
     enabled: true
 
-- name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Restart `dnsmasq` service"
+- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Restart `dnsmasq` service"
   service:
     name: dnsmasq
     state: restarted
 
-- name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Restart `networking` using `ifreload -a`"
+- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Restart `networking` using `ifreload -a`"
   shell: ifreload -a
   changed_when: false
-
-- name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Enable and start `nftables` service"
-  systemd:
-    name: nftables
-    enabled: yes
-    state: started
 
 - name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Enable IPv4 forwarding"
   sysctl:
@@ -536,11 +533,32 @@
 - name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Reload nftables to apply new rules"
   command: nft -f /etc/nftables.conf
 
-- name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Touching checksum file on successful completion"
+- name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Create systemd override directory for nftables"
+  file:
+    path: /etc/systemd/system/nftables.service.d
+    state: directory
+    mode: '0755'
+
+- name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Set systemd unit override for nftables (network-online)"
+  copy:
+    dest: /etc/systemd/system/nftables.service.d/override.conf
+    content: |
+      [Unit]
+      After=network-online.target
+      Wants=network-online.target
+    mode: '0644'
+
+- name: "{{ file_sno_type_prefix }} 022: {{ section_name }}, Enable and start `nftables` service"
+  systemd:
+    name: nftables
+    enabled: yes
+    state: started
+
+- name: "{{ file_sno_type_prefix }} 023: {{ section_name }}, Touching checksum file on successful completion"
   shell: "mkdir -p /root/proxmox_automation_install && rm -f /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_* && sleep 2 && touch /root/proxmox_automation_install/task_setting_up_lan_and_internet_bridge_$(date +%Y%m%d-%H%M%S).run.tmp"
   changed_when: false
 
-- name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
+- name: "{{ file_sno_type_prefix }} 024: {{ section_name }}, Reboot the server if `is_condition_post_completion_tasks_and_cleanup` is not defined"
   reboot:
     msg: "Reboot initiated by Ansible for networking `interface` and dnsmasq server installation changes"
     reboot_timeout: 600

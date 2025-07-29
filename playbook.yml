@@ -31,8 +31,9 @@
 #     26. Modify Add Network Adapters
 #     27. Patch Network Dialogbox
 #     28. Setting up LAN and Internet Bridge
-#     29. Enable Tags view in Dashboard
-#     30. Post Completion Tasks and Cleanup (TASK only)
+#     29. Storage
+#     30. Enable Tags view in Dashboard
+#     31. Post Completion Tasks and Cleanup (TASK only)
 #
 #
 ############################################################################################################
@@ -65,6 +66,7 @@
     is_condition_modify_add_network_adapters: false
     is_condition_patch_network_dialogbox: false
     is_condition_setting_up_lan_and_internet_bridge: false
+    is_condition_storage: false
     is_condition_enable_tags_view_in_dashboard: false
     is_condition_post_completion_tasks_and_cleanup: false
 
@@ -362,6 +364,17 @@
     - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Setting up LAN and Internet Bridge`, Caller block"
       include_tasks: tasks/setting_up_lan_and_internet_bridge.yml
       when: is_condition_setting_up_lan_and_internet_bridge
+
+    - name: ""
+      import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml
+
+    # `Storage` (will run only once, until forced)
+    - name: ""
+      import_tasks: tasks_conditions/storage.yml
+
+    - name: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task: `Storage`, Caller block"
+      include_tasks: tasks/storage.yml
+      when: is_condition_storage
 
     - name: ""
       import_tasks: includes/pretask_taskandtaskcondition_message_sno_increment.yml

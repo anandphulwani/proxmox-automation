@@ -1,0 +1,260 @@
+- name: "Declare all variables"
+  set_fact:
+    file_sno_type_prefix: "{{ '%02d' | format(pretask_taskandtaskcondition_message_sno | int) }}-Task:"
+    section_name: "`Storage`"
+    # old_hostname_from_hostname_command: null
+    # old_hostname_from_hosts_file: null
+    # current_hostname_result: null
+    # current_hostname: null
+  changed_when: false
+
+# =========================================================================================================================
+# TODO: Run `pvesm set local --disable 1`, this results into two things, one local is disabled and the second it generates `/etc/pve/storage.cfg`,
+# if its not available, so that we can edit it, after disabling this, we can copy the block of local and paste a copy of it in the same file,
+# and rename it to BootStorage and enable it. (this file sometimes is not created, when running on RAID1, until and unless some storage is modified)
+#
+# =========================================================================================================================
+#
+# These commands create RAID1 of two disks and add them as Storage, Check and verify this,
+# Add options in vault to create RAID of disks, something like:
+# storage_raid
+#       - DataStorage: ['/dev/sdc' '/dev/sdd']
+#
+#
+#
+#
+# 
+# apt install parted
+
+# parted /dev/sdc --script mklabel gpt
+# parted /dev/sdc --script mkpart primary 0% 100%
+
+# parted /dev/sdd --script mklabel gpt
+# parted /dev/sdd --script mkpart primary 0% 100%
+
+# cat /proc/mdstat
+
+# mdadm --create --verbose --assume-clean /dev/md15 --level=1 --raid-devices=2 --name=md15 /dev/sdc1 /dev/sdd1
+
+# watch cat /proc/mdstat
+
+# mdadm --detail --scan >> /etc/mdadm/mdadm.conf
+
+# vi /etc/mdadm/mdadm.conf # remove duplicates
+
+# sudo update-initramfs -u
+
+# mkfs.ext4 /dev/md15
+
+# mkdir -p /mnt/datastorage
+# mount /dev/md15 /mnt/datastorage
+
+# blkid /dev/md15
+
+# Add this to /etc/fstab:
+
+# UUID=79d8aa17-477d-4370-9df7-aa8b3db8f367 /mnt/datastorage ext4 defaults 0 2
+
+# reboot
+
+# systemctl restart pvedaemon
+# systemctl restart pveproxy
+#
+# =========================================================================================================================
+#
+#  To force resync of the RAID created
+#
+#
+# mdadm /dev/md15 --fail /dev/sdd1
+# mdadm /dev/md15 --remove /dev/sdd1
+# mdadm /dev/md15 --add /dev/sdd1
+# watch cat /proc/mdstat
+#
+#
+#
+# =========================================================================================================================
+#
+# If a previous RAID is created these are the steps to remove the RAID and clear it of its signature,
+# So that you can add it freshly if required.
+#
+# umount /dev/sdc*
+# umount /dev/sdd*
+
+
+# mdadm --stop /dev/md15
+# mdadm --remove /dev/md15
+
+
+# mdadm --zero-superblock /dev/sdc
+# mdadm --zero-superblock /dev/sdd
+
+# wipefs -a /dev/sdc
+# wipefs -a /dev/sdd
+
+# sgdisk --zap-all /dev/sdc
+# sgdisk --zap-all /dev/sdd
+
+# # dd if=/dev/zero of=/dev/sdc bs=1M status=progress
+# # dd if=/dev/zero of=/dev/sdd bs=1M status=progress
+
+# vi /etc/mdadm/mdadm.conf
+
+# blkid /dev/sdc
+# blkid /dev/sdd
+# lsblk -o NAME,SIZE,TYPE,MOUNTPOINT /dev/sdc
+# lsblk -o NAME,SIZE,TYPE,MOUNTPOINT /dev/sdd
+#
+#
+#
+# =========================================================================================================================
+#
+# TODO: Check the `reboot` which is called and and what place and check their calling conditions.
+# Remember that after changing hostname and after adding another bridge rebooting is neccesssary.
+#
+# =========================================================================================================================
+#
+# TODO: One of the blue messages is being displayed twice, when after running once it should not be
+# displayed twice, check why that is happening.
+#
+# =========================================================================================================================
+#
+# TODO: Created a script that went missing, create it again or find it, the purpose of the script is
+# to correct the sequence numbers, and to check the prefix of every task and opening and ending quotes
+# , also we can add other multiple checks to make the script more uniform.
+#
+# =========================================================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# - name: "{{ file_sno_type_prefix }} 001: {{ section_name }}, Backup current `/etc/hostname`"
+#   shell: mkdir -p /root/proxmox_automation_install/backups/etc/ && cp /etc/hostname /root/proxmox_automation_install/backups/etc/hostname_$(date +%Y%m%d-%H%M%S)
+#   failed_when: false
+
+# - name: "{{ file_sno_type_prefix }} 002: {{ section_name }}, Backup current `/etc/hosts`"
+#   shell: mkdir -p /root/proxmox_automation_install/backups/etc/ && cp /etc/hosts /root/proxmox_automation_install/backups/etc/hosts_$(date +%Y%m%d-%H%M%S)
+#   failed_when: false
+
+# - name: "{{ file_sno_type_prefix }} 003: {{ section_name }}, Get the machine old hostname"
+#   command: hostname
+#   register: old_hostname_from_hostname_command
+#   changed_when: false
+#   failed_when: false
+
+# - name: "{{ file_sno_type_prefix }} 004: {{ section_name }}, Update `/etc/hostname`"
+#   copy:
+#     content: "{{ hostname }}\n"
+#     dest: /etc/hostname
+
+# - name: "{{ file_sno_type_prefix }} 005: {{ section_name }}, Get the current hostname from `/etc/hosts`"
+#   command:
+#     cmd: awk '/127.0.1.1/ {print $2}' /etc/hosts
+#   register: old_hostname_from_hosts_file
+#   changed_when: false
+#   failed_when: false
+
+# - name: "{{ file_sno_type_prefix }} 006: {{ section_name }}, Replace old hostname from hostname command with new hostname in `/etc/hosts`"
+#   replace:
+#     path: /etc/hosts
+#     regexp: " {{ old_hostname_from_hostname_command.stdout }}$"
+#     replace: " {{ hostname }}"
+
+# - name: "{{ file_sno_type_prefix }} 007: {{ section_name }}, Replace old hostname from hosts file with new hostname in `/etc/hosts`"
+#   replace:
+#     path: /etc/hosts
+#     regexp: " {{ old_hostname_from_hosts_file.stdout }}$"
+#     replace: " {{ hostname }}"
+
+# - name: "{{ file_sno_type_prefix }} 008: {{ section_name }}, Set hostname using the hostname module"
+#   hostname:
+#     name: "{{ hostname }}"
+
+# - name: "{{ file_sno_type_prefix }} 009: {{ section_name }}, Restart `networking` using `ifreload -a`"
+#   shell: ifreload -a
+#   changed_when: false
+
+# - name: "{{ file_sno_type_prefix }} 010: {{ section_name }}, Get the machine new hostname"
+#   command: hostname
+#   register: current_hostname_result
+#   changed_when: false
+#   failed_when: false
+
+# - name: "{{ file_sno_type_prefix }} 011: {{ section_name }}, Set the `current_hostname` from `current_hostname_result`"
+#   set_fact:
+#     current_hostname: "{{ current_hostname_result.stdout }}"
+
+# - name: "{{ file_sno_type_prefix }} 012: {{ section_name }}, Fail if hostname hasnt changed"
+#   fail:
+#     msg: "Unable to set `hostname` to {{ hostname }}."
+#   when: current_hostname != hostname
+
+# - name: "{{ file_sno_type_prefix }} 013: {{ section_name }}, Reboot the server"
+#   reboot:
+#     msg: "Reboot initiated by `Hostname.yml`"
+#     reboot_timeout: 600
+
+# - name: "{{ file_sno_type_prefix }} 014: {{ section_name }}, Check if folder with new hostname exists in /etc/pve/nodes"
+#   stat:
+#     path: "/etc/pve/nodes/{{ hostname }}"
+#   register: new_hostname_node_dir
+
+# - name: "{{ file_sno_type_prefix }} 015: {{ section_name }}, Fail if new hostname folder not found in /etc/pve/nodes"
+#   fail:
+#     msg: "New hostname folder `/etc/pve/nodes/{{ hostname }}` not found."
+#   when: not new_hostname_node_dir.stat.exists
+
+# - name: "{{ file_sno_type_prefix }} 016: {{ section_name }}, Check if folder with old hostname exists in /etc/pve/nodes"
+#   stat:
+#     path: "/etc/pve/nodes/{{ old_hostname_from_hostname_command.stdout }}"
+#   register: old_hostname_node_dir
+
+# - name: "{{ file_sno_type_prefix }} 017: {{ section_name }}, Fail if old hostname folder not found in /etc/pve/nodes"
+#   fail:
+#     msg: "Old hostname folder `/etc/pve/nodes/{{ old_hostname_from_hostname_command.stdout }}` not found."
+#   when: not old_hostname_node_dir.stat.exists
+
+# - name: "{{ file_sno_type_prefix }} 018: {{ section_name }}, Archive old hostname folder and move to backup"
+#   shell: |
+#     mkdir -p /root/proxmox_automation_install/backups/etc/pve/nodes/
+#     tar czf /root/proxmox_automation_install/backups/etc/pve/nodes/{{ old_hostname_from_hostname_command.stdout }}_$(date +%Y%m%d-%H%M%S).tar.gz -C /etc/pve/nodes {{ old_hostname_from_hostname_command.stdout }}
+#     rm -rf /etc/pve/nodes/{{ old_hostname_from_hostname_command.stdout }}
+#   args:
+#     executable: /bin/bash
+#   register: archive_old_node_dir
+#   failed_when: archive_old_node_dir.rc != 0
+
+# - name: "{{ file_sno_type_prefix }} 019: {{ section_name }}, Check if /etc/mdadm/mdadm.conf exists"
+#   stat:
+#     path: /etc/mdadm/mdadm.conf
+#   register: mdadm_conf_file
+
+# - name: "{{ file_sno_type_prefix }} 020: {{ section_name }}, Check if old hostname followed by ':' exists in mdadm.conf"
+#   shell: grep -q "{{ old_hostname_from_hostname_command.stdout }}:" /etc/mdadm/mdadm.conf
+#   register: old_hostname_in_mdadm
+#   failed_when: false
+#   changed_when: false
+#   when: mdadm_conf_file.stat.exists
+
+# - name: "{{ file_sno_type_prefix }} 021: {{ section_name }}, Replace old hostname: with new hostname: in mdadm.conf"
+#   replace:
+#     path: /etc/mdadm/mdadm.conf
+#     regexp: '\b{{ old_hostname_from_hostname_command.stdout }}:'
+#     replace: '{{ hostname }}:'
+#   when:
+#     - mdadm_conf_file.stat.exists
+#     - old_hostname_in_mdadm.rc == 0
